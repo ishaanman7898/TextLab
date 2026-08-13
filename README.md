@@ -11,5 +11,15 @@ Paste text or drop a file, get back plain text with nothing hiding in it: https:
 
 Reads `.pdf` (pdf.js), `.txt`, `.md`, `.html`, `.csv`, `.rtf`. Everything except the translation happens in the browser.
 
-`node test.js` runs the cleaning and format round-trips straight out of `public/index.html`.
+## Layout
+
+- `public/pipeline.js` — scanning, cleaning, the round-trip call and the five-file chain. No DOM, so it runs in node.
+- `public/inspect.js` — byte-level C2PA / EXIF / XMP / IPTC inspector. No DOM either.
+- `public/index.html` — the page and its wiring.
+- `src/worker.js` — `/api/translate` (chunked, three lanes, a failed hop passes text through) and `/api/health`.
+
+## Checks
+
+`node test.js` runs the cleaning rules, every format round-trip, all 30 conversion-chain permutations (the chain must return the text byte for byte), a simulated round-trip failure, and the C2PA inspector against a synthesised JPEG.
+`node test.js --live` also runs the whole pipeline against the deployment, including a real translation round-trip.
 `npx wrangler deploy` ships it.

@@ -172,105 +172,7 @@
 
 <script type="module">
 import { inspect, sniff, isImage } from './inspect.js';
-
-/* ------------------------------------------------------------------ scanning */
-
-// Each class is counted before it is removed, so the ledger can report it.
-const CLASSES = [
-  { label:'Zero-width characters',  re:/[\u200B-\u200D\u2060-\u2064\uFEFF]/g,                        to:'',   act:'removed' },
-  { label:'Bidirectional controls', re:/[\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/g,            to:'',   act:'removed' },
-  { label:'Variation selectors',    re:/[\uFE00-\uFE0F]/g,                                           to:'',   act:'removed' },
-  { label:'Unicode tag characters', re:/\uDB40[\uDC00-\uDDEF]/g,                                     to:'',   act:'removed' },
-  { label:'Soft hyphens',           re:/\u00AD/g,                                                    to:'',   act:'removed' },
-  { label:'Invisible fillers',      re:/[\u034F\u115F\u1160\u17B4\u17B5\u180B-\u180F\u3164\u206A-\u206F\uFFA0\uFFF9-\uFFFB]/g, to:'', act:'removed' },
-  { label:'Control characters',     re:/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g,     to:'',   act:'removed' },
-  { label:'Non-standard spaces',    re:/[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]/g,             to:' ',  act:'flattened' },
-  { label:'Link tracking parameters', re:/([?&])(utm_[a-z]+|fbclid|gclid|igshid|mc_[a-z]+|ref_src|si)=[^&\s)\]]*/gi, to:'$1', act:'removed' },
-  { label:'Semicolons',             re:/;/g,                                                         to:', ', act:'replaced with ", "' },
-  { label:'Dashes and em dashes',   re:/[\u002D\u058A\u1400\u1806\u2010-\u2015\u2212\u2E3A\u2E3B\uFE58\uFE63\uFF0D]/g, to:', ', act:'replaced with ", "' },
-];
-
-function clean(text) {
-  const found = [];
-  let s = text.replace(/\r\n?/g, '\n');
-  for (const c of CLASSES) {
-    const hits = s.match(c.re);
-    if (hits) found.push({ count:hits.length, label:c.label, act:c.act });
-    s = s.replace(c.re, c.to);
-  }
-  s = s.normalize('NFC')
-    .replace(/\?&+/g, '?').replace(/&&+/g, '&')   // tidy URLs left ragged by removed tracking params
-    .replace(/[?&]+(\s|$)/g, '$1')
-    .replace(/[ \t]*,(?:[ \t]*,)+/g, ',')   // collapse runs of inserted commas
-    .replace(/[ \t]+,/g, ',')
-    .replace(/,(\S)/g, ', $1')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/[ \t]+$/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-  return { text:s, found };
-}
-
-// Provenance markers that ride along with rich-text pastes.
-const MARKERS = [
-  [/docs-internal-guid|google-docs/i,      'Google Docs paste markers'],
-  [/mso-|urn:schemas-microsoft-com|<o:p>/i,'Microsoft Word paste markers'],
-  [/notion\.so|notion-/i,                  'Notion paste markers'],
-  [/data-pm-slice|ProseMirror/i,           'ProseMirror editor markers'],
-  [/<meta[^>]+name=["']?generator/i,       'Generator metadata'],
-  [/class=["'][^"']*(ql-|tiptap|slate-)/i, 'Rich-text editor classes'],
-];
-
-function scanHtml(html) {
-  const found = [];
-  for (const [re, label] of MARKERS) if (re.test(html)) found.push({ count:1, label, act:'dropped with the markup' });
-  const links = html.match(/href=/gi);
-  if (links) found.push({ count:links.length, label:'Hyperlinks', act:'flattened to text' });
-  const comments = html.match(/<!--[\s\S]*?-->/g);
-  if (comments) found.push({ count:comments.length, label:'HTML comments', act:'dropped with the markup' });
-  return found;
-}
-
-/* ------------------------------------------------------------------ formats */
-
-const paras = t => t.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
-const escHtml = t => t.replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
-const stripTags = h => { const d = new DOMParser().parseFromString(h, 'text/html');
-  return [...d.body.querySelectorAll('p,div,li,h1,h2,h3,br')].length
-    ? [...d.body.children].map(e => e.textContent.trim()).filter(Boolean).join('\n\n')
-    : d.body.textContent.trim(); };
-
-const FORMATS = {
-  txt:  { ext:'txt',  mime:'text/plain',        name:'TXT',  to:t => t,                       from:s => s },
-  md:   { ext:'md',   mime:'text/markdown',     name:'MD',   name2:'Markdown',
-          to:t => paras(t).map(p => p.replace(/^([#>*+\-=])/gm, '\\$1')).join('\n\n'),
-          from:s => s.replace(/^\\([#>*+\-=])/gm, '$1') },
-  html: { ext:'html', mime:'text/html',         name:'HTML',
-          to:t => '<!doctype html>\n<meta charset="utf-8">\n<title>TextLab</title>\n' + paras(t).map(p => '<p>' + escHtml(p) + '</p>').join('\n') + '\n',
-          from:s => stripTags(s) },
-  rtf:  { ext:'rtf',  mime:'application/rtf',   name:'RTF',
-          to:t => '{\\rtf1\\ansi\\deff0\n' + paras(t).map(p =>
-                    '\\pard ' + p.replace(/[\\{}]/g, m => '\\' + m)
-                                 .replace(/[\u0080-\uFFFF]/g, c => '\\u' + c.charCodeAt(0) + '?')
-                                 .replace(/\n/g, '\\line ') + '\\par').join('\n') + '\n}',
-          from:s => s.replace(/^\{\\rtf1[^\n]*\n?/, '')
-                     .replace(/\\par\b\s*/g, '\n\n').replace(/\\line\b\s?/g, '\n')
-                     .replace(/\\u(\d+)\?/g, (_, n) => String.fromCharCode(+n))
-                     .replace(/\\([\\{}])/g, (_, c) => '\u0001' + c.charCodeAt(0) + '\u0002')
-                     .replace(/\\[a-z]+-?\d*\s?/gi, '')   // drop the remaining control words
-                     .replace(/[{}]/g, '')                // and the grouping braces
-                     .replace(/\u0001(\d+)\u0002/g, (_, n) => String.fromCharCode(+n))
-                     .trim() },
-  csv:  { ext:'csv',  mime:'text/csv',          name:'CSV',
-          to:t => 'paragraph\n' + paras(t).map(p => '"' + p.replace(/"/g, '""') + '"').join('\n') + '\n',
-          from:s => s.trim().replace(/^paragraph\n/, '').split(/\n(?=")/).map(r => r.replace(/^"|"$/g, '').replace(/""/g, '"')).join('\n\n') },
-  doc:  { ext:'doc',  mime:'application/msword', name:'DOC', name2:'Word',
-          to:t => '<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head><body>' +
-                  paras(t).map(p => '<p>' + escHtml(p) + '</p>').join('') + '</body></html>',
-          from:s => stripTags(s) },
-};
-
-const pick = (arr, n) => [...arr].sort(() => Math.random() - 0.5).slice(0, n);
+import { clean, scanHtml, stripTags, FORMATS, pick, runTextPipeline } from './pipeline.js';
 
 /* ------------------------------------------------------------------ readers */
 
@@ -379,8 +281,9 @@ function renderFindings(found) {
   const box = $('findings');
   if (!found.length) { box.innerHTML = '<p class="empty">Clean sweep. No invisible characters, metadata or markers in this text.</p>'; return; }
   box.innerHTML = '<table><tbody>' + found.map(f =>
-    '<tr><td>' + f.count + '</td><td>' + escHtml(f.label) + '</td><td>' + escHtml(f.act) + '</td></tr>').join('') + '</tbody></table>';
+    '<tr><td>' + (f.count || '—') + '</td><td>' + escapeCell(f.label) + '</td><td>' + escapeCell(f.act) + '</td></tr>').join('') + '</tbody></table>';
 }
+const escapeCell = t => String(t).replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
 
 function renderStages(chain) {
   $('stages').innerHTML = chain.map((s, i) =>
@@ -412,20 +315,6 @@ $('copy').onclick = async () => {
   setStatus('Output copied.');
 };
 
-const LANGS = ['spanish','russian','french','german','japanese','portuguese','italian','korean','turkish','dutch','polish','swedish','indonesian','vietnamese'];
-
-async function roundTrip(text) {
-  const langs = pick(LANGS, 2);
-  setStatus('Translating english → ' + langs[0] + ' → ' + langs[1] + ' → english…');
-  const res = await fetch('/api/translate', {
-    method:'POST', headers:{ 'content-type':'application/json' },
-    body: JSON.stringify({ text, langs })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || ('translation failed (' + res.status + ')'));
-  return { text:data.text, langs };
-}
-
 /* ---- image bench: re-encode the pixels, which is what drops C2PA and friends ---- */
 
 const IMG = {
@@ -448,14 +337,13 @@ async function reencode(blob, fmt) {
 async function runImage() {
   const dest = $('imgdest').value;
   const mid = pick(['png','jpeg','webp'], 3);
-  const chain = [
+  renderStages([
     { name:'ORIG', note:'the file as dropped, records intact' },
     { name:IMG[mid[0]].name, note:'first re-encode' },
     { name:IMG[mid[1]].name, note:'second re-encode' },
     { name:IMG[mid[2]].name, note:'third re-encode' },
     { name:IMG[dest].name,   note:'your destination' },
-  ];
-  renderStages(chain);
+  ]);
 
   const found = [...fileInput.found];
   const origExt = (fileInput.blob.name.match(/\.[a-z0-9]+$/i) || ['.bin'])[0];
@@ -490,6 +378,10 @@ async function runImage() {
   setStatus('Done. Five files ready below.');
 }
 
+/* ---- the run ---- */
+
+let ticker = null;
+
 $('run').onclick = async () => {
   const raw = $in.value;
   $('run').disabled = true;
@@ -498,59 +390,54 @@ $('run').onclick = async () => {
   try {
     if (fileInput && fileInput.kind === 'image') { await runImage(); return; }
     if (!raw.trim()) { setStatus('Nothing to work with yet.', true); $in.focus(); return; }
+
     const dest = $('dest').value;
-    const mid = pick(['md','html','rtf','csv'].filter(f => f !== dest), 3);
-    const chain = [
-      { fmt:'txt',  note:'extracted source' },
-      { fmt:mid[0], note:'first conversion' },
-      { fmt:mid[1], note:'second conversion' },
-      { fmt:mid[2], note:'third conversion' },
-      { fmt:dest,   note:'your destination' },
-    ].map(s => ({ ...s, name:FORMATS[s.fmt].name }));
-    renderStages(chain);
+    const translate = $('tr').checked;
 
-    setStatus('Scanning and cleaning…');
-    const swept = clean(raw);
-    let text = swept.text;
-    const found = [...(fileInput ? fileInput.found : []), ...pasteFindings, ...swept.found];
+    // The round-trip takes tens of seconds; a counter keeps that from reading as a hang.
+    let secs = 0;
+    ticker = setInterval(() => {
+      if (/^Round-trip running/.test($status.textContent)) setStatus('Round-trip running… ' + (++secs) + 's, 15 to 40s is normal');
+    }, 1000);
 
-    if ($('tr').checked) {
-      try {
-        const t = await roundTrip(text);
-        // the translator sometimes welds sentences together; two lowercase letters before the stop keeps "U.S.A." safe
-        text = clean(t.text.replace(/([a-z]{2}[.!?])([A-Z])/g, '$1 $2')).text;
-        found.push({ count:2, label:'Round-trip: english → ' + t.langs[0] + ' → ' + t.langs[1] + ' → english', act:'rewritten' });
-      } catch (err) {
-        found.push({ count:0, label:'Round-trip skipped: ' + err.message, act:'not run' });
-        setStatus('Round-trip skipped: ' + err.message, true);
-      }
-    }
+    const result = await runTextPipeline({
+      raw, dest, translate,
+      extraFindings: [...(fileInput ? fileInput.found : []), ...pasteFindings],
+      onStatus: setStatus,
+      onChain: renderStages,
+      onStage: async (i, art) => {
+        const blob = new Blob([art.body], { type: art.mime + ';charset=utf-8' });
+        artifacts.push({ name:art.name, blob });
+        markStage(i, blob.size);
+        await new Promise(r => setTimeout(r, 90));   // lets the rail stamp in one stage at a time
+      },
+    });
 
-    // Each step really serialises to its format and parses back before the next one.
-    for (let i = 0; i < chain.length; i++) {
-      const f = FORMATS[chain[i].fmt];
-      const body = f.to(text);
-      const blob = new Blob([body], { type: f.mime + ';charset=utf-8' });
-      artifacts.push({ name:'textlab-' + (i + 1) + '.' + f.ext, blob, body });
-      markStage(i, blob.size);
-      if (i < chain.length - 1) text = f.from(body);
-      await new Promise(r => setTimeout(r, 90));   // lets the rail stamp in one stage at a time
-    }
-
-    $out.value = FORMATS[dest].from(artifacts[artifacts.length - 1].body);
+    $out.value = result.text;
     $('outfmt').textContent = (FORMATS[dest].name2 || FORMATS[dest].name) + ' · textlab-5.' + FORMATS[dest].ext;
-    renderFindings(found);
-    readout('done', raw.length, $out.value.length);
-    if (!$status.classList.contains('err')) setStatus('Done. Five files ready below.');
+    renderFindings(result.found);
+    readout('done', raw.length, result.text.length);
+    if (!$status.classList.contains('err')) {
+      setStatus(result.translated ? 'Done, round-trip included. Five files ready below.' : 'Done. Five files ready below.');
+    }
   } catch (err) {
     setStatus('Run failed: ' + err.message, true);
   } finally {
+    clearInterval(ticker);
     $('run').disabled = false;
   }
 };
 
 readout('idle', 0, 0);
-window.TEXTLAB = { clean, FORMATS, scanHtml };   // used by test.js
+
+// Check the round-trip API up front, so an unreachable one cannot masquerade as a no-op.
+fetch('/api/health')
+  .then(r => r.json())
+  .then(h => { if (!h.ai) throw new Error('this deployment has no Workers AI binding'); })
+  .catch(err => {
+    $('tr').checked = false;
+    setStatus('Round-trip switched off: ' + err.message, true);
+  });
 </script>
 </body>
 </html>
