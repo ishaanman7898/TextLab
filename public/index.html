@@ -116,7 +116,7 @@
 <header>
   <div>
     <h1>Text<em>Lab</em></h1>
-    <p class="tagline">Paste it, drop it, and take back plain text with nothing hiding in it.</p>
+    <p class="tagline">Paste it, drop it, and take back a file with nothing hiding in it. Text, PDFs and images, every hidden record itemised before it goes.</p>
   </div>
   <div class="readout" id="readout">idle<br><b>0</b> chars in / <b>0</b> out</div>
 </header>
@@ -124,7 +124,7 @@
 <div class="bench">
   <section class="panel drop" id="drop">
     <h2>Input <span id="srcname">paste or drop a file</span></h2>
-    <textarea id="in" placeholder="Paste text here, or drop a .pdf, .txt, .md, .html, .csv or .rtf file anywhere on this panel." autofocus></textarea>
+    <textarea id="in" placeholder="Paste text here, or drop a file on this panel: .pdf, .txt, .md, .html, .csv, .rtf, or an image (.jpg, .png, .webp, .avif, .heic) to inspect for Content Credentials." autofocus></textarea>
   </section>
   <section class="panel">
     <h2>Output <span id="outfmt">plain text</span></h2>
@@ -134,13 +134,18 @@
 
 <div class="controls">
   <label class="filebtn" for="file">Choose file</label>
-  <input id="file" type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.csv,.rtf,.json,text/*,application/pdf" hidden>
+  <input id="file" type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.csv,.rtf,.json,.jpg,.jpeg,.png,.webp,.avif,.heic,.tif,.tiff,text/*,image/*,application/pdf" hidden>
   <select id="dest" aria-label="Final file type">
     <option value="doc">End as Word (.doc)</option>
     <option value="txt">End as plain text (.txt)</option>
     <option value="md">End as Markdown (.md)</option>
     <option value="html">End as HTML (.html)</option>
     <option value="rtf">End as RTF (.rtf)</option>
+  </select>
+  <select id="imgdest" aria-label="Final image type" hidden>
+    <option value="png">End as PNG</option>
+    <option value="jpeg">End as JPEG</option>
+    <option value="webp">End as WEBP</option>
   </select>
   <label class="check"><input type="checkbox" id="tr" checked> Round-trip 2 languages</label>
   <button id="run">Run the bench</button>
@@ -166,6 +171,8 @@
 </div>
 
 <script type="module">
+import { inspect, sniff, isImage } from './inspect.js';
+
 /* ------------------------------------------------------------------ scanning */
 
 // Each class is counted before it is removed, so the ledger can report it.
@@ -269,6 +276,8 @@ const pick = (arr, n) => [...arr].sort(() => Math.random() - 0.5).slice(0, n);
 
 async function readFile(file) {
   const name = (file.name || '').toLowerCase();
+  const head = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  if (isImage(sniff(head))) return readImage(file);
   if (name.endsWith('.pdf') || file.type === 'application/pdf') return readPdf(file);
   const raw = await file.text();
   const found = [];
@@ -280,13 +289,25 @@ async function readFile(file) {
   return { text, found, src };
 }
 
+// Images: nothing to read as text, so the file itself is the subject.
+async function readImage(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const { kind, found } = inspect(bytes);
+  const text = found.length
+    ? 'Provenance records found in ' + file.name + ':\n\n' + found.map(f => '  - ' + f.label).join('\n') +
+      '\n\nRun the bench to re-encode the pixels and drop every one of them.'
+    : 'No C2PA, EXIF or XMP records found in ' + file.name + '.';
+  return { kind:'image', blob:file, bytes, found, src:kind, text };
+}
+
 const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/';
 
 async function readPdf(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
   const pdfjs = await import(PDFJS + 'pdf.min.mjs');
   pdfjs.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.mjs';
-  const doc = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-  const found = [];
+  const doc = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+  const found = inspect(bytes).found;   // PDFs can carry C2PA and XMP too
   try {
     const { info, metadata } = await doc.getMetadata();
     for (const k of ['Title','Author','Subject','Keywords','Creator','Producer','CreationDate','ModDate']) {
@@ -311,12 +332,20 @@ const $in = $('in'), $out = $('out'), $status = $('status');
 let pasteFindings = [], fileInput = null, artifacts = [];
 
 function setStatus(msg, isErr) { $status.textContent = msg; $status.classList.toggle('err', !!isErr); }
-function readout(state, a, b) { $('readout').innerHTML = state + '<br><b>' + a + '</b> chars in / <b>' + b + '</b> out'; }
+function readout(state, a, b, unit) {
+  $('readout').innerHTML = state + '<br><b>' + a.toLocaleString() + '</b> ' + (unit || 'chars') + ' in / <b>' + b.toLocaleString() + '</b> out';
+}
+
+function setMode(isImg) {
+  $('dest').hidden = isImg;
+  $('imgdest').hidden = !isImg;
+  $('tr').closest('.check').hidden = isImg;   // nothing to translate in a photograph
+}
 
 $in.addEventListener('paste', e => {
   const html = e.clipboardData && e.clipboardData.getData('text/html');
   pasteFindings = html ? scanHtml(html) : [];
-  fileInput = null; $('srcname').textContent = 'pasted text';
+  fileInput = null; $('srcname').textContent = 'pasted text'; setMode(false);
 });
 $in.addEventListener('input', () => readout('ready', $in.value.length, $out.value.length));
 
@@ -334,8 +363,12 @@ async function loadFile(file) {
     $in.value = fileInput.text;
     pasteFindings = [];
     $('srcname').textContent = file.name;
-    readout('file loaded', $in.value.length, 0);
-    setStatus('Loaded. Run the bench when ready.');
+    setMode(fileInput.kind === 'image');
+    readout('file loaded', fileInput.kind === 'image' ? file.size : $in.value.length, 0,
+            fileInput.kind === 'image' ? 'bytes' : 'chars');
+    setStatus(fileInput.kind === 'image'
+      ? 'Inspected ' + fileInput.src.toUpperCase() + '. ' + fileInput.found.length + ' record(s) found.'
+      : 'Loaded. Run the bench when ready.');
   } catch (err) {
     fileInput = null;
     setStatus('Could not read that file: ' + err.message, true);
@@ -352,7 +385,7 @@ function renderFindings(found) {
 function renderStages(chain) {
   $('stages').innerHTML = chain.map((s, i) =>
     '<div class="stage" data-i="' + i + '"><div class="dot"></div><div class="n">STEP ' + (i + 1) + '</div>' +
-    '<div class="fmt">' + FORMATS[s.fmt].name + '</div><div class="meta">' + s.note + '</div>' +
+    '<div class="fmt">' + s.name + '</div><div class="meta">' + s.note + '</div>' +
     '<button type="button" data-dl="' + i + '">Download</button></div>').join('');
 }
 
@@ -367,9 +400,8 @@ $('stages').addEventListener('click', e => {
   const i = e.target.dataset && e.target.dataset.dl;
   if (i == null) return;
   const a = artifacts[+i];
-  const blob = new Blob([a.body], { type: FORMATS[a.fmt].mime + ';charset=utf-8' });
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
+  link.href = URL.createObjectURL(a.blob);
   link.download = a.name;
   link.click();
   URL.revokeObjectURL(link.href);
@@ -394,13 +426,77 @@ async function roundTrip(text) {
   return { text:data.text, langs };
 }
 
+/* ---- image bench: re-encode the pixels, which is what drops C2PA and friends ---- */
+
+const IMG = {
+  png:  { mime:'image/png',  ext:'png',  name:'PNG' },
+  jpeg: { mime:'image/jpeg', ext:'jpg',  name:'JPEG', q:0.92 },
+  webp: { mime:'image/webp', ext:'webp', name:'WEBP', q:0.92 },
+};
+
+async function reencode(blob, fmt) {
+  const bmp = await createImageBitmap(blob);
+  const c = document.createElement('canvas');
+  c.width = bmp.width; c.height = bmp.height;
+  c.getContext('2d').drawImage(bmp, 0, 0);
+  bmp.close();
+  const out = await new Promise(r => c.toBlob(r, IMG[fmt].mime, IMG[fmt].q));
+  if (!out) throw new Error('this browser will not encode ' + IMG[fmt].name);
+  return out;
+}
+
+async function runImage() {
+  const dest = $('imgdest').value;
+  const mid = pick(['png','jpeg','webp'], 3);
+  const chain = [
+    { name:'ORIG', note:'the file as dropped, records intact' },
+    { name:IMG[mid[0]].name, note:'first re-encode' },
+    { name:IMG[mid[1]].name, note:'second re-encode' },
+    { name:IMG[mid[2]].name, note:'third re-encode' },
+    { name:IMG[dest].name,   note:'your destination' },
+  ];
+  renderStages(chain);
+
+  const found = [...fileInput.found];
+  artifacts.push({ name:'textlab-1-original.' + (fileInput.src === 'jpeg' ? 'jpg' : fileInput.src), blob:fileInput.blob });
+  markStage(0, fileInput.blob.size);
+
+  let blob = fileInput.blob;
+  for (let i = 0; i < 4; i++) {
+    const fmt = i < 3 ? mid[i] : dest;
+    setStatus('Re-encoding as ' + IMG[fmt].name + '…');
+    blob = await reencode(blob, fmt);
+    artifacts.push({ name:'textlab-' + (i + 2) + '.' + IMG[fmt].ext, blob });
+    markStage(i + 1, blob.size);
+  }
+
+  // Prove it rather than claim it: re-inspect the file that comes out the far end.
+  const after = inspect(new Uint8Array(await blob.arrayBuffer())).found.filter(f => f.count > 0);
+  found.push(after.length
+    ? { count:after.length, label:'Records still present after re-encoding: ' + after.map(f => f.label).join('; '), act:'survived' }
+    : { count:0, label:'Verified: the final file carries no C2PA, EXIF, XMP or IPTC records', act:'confirmed' });
+
+  $out.value = [
+    'Source: ' + fileInput.blob.name + ' (' + fileInput.src + ', ' + fileInput.blob.size.toLocaleString() + ' bytes)',
+    'Chain: ORIG → ' + mid.map(m => IMG[m].name).join(' → ') + ' → ' + IMG[dest].name,
+    '',
+    found.length > 1 ? 'Records found and removed:' : 'Nothing to remove:',
+    ...found.map(f => '  - ' + f.label),
+  ].join('\n');
+  $('outfmt').textContent = IMG[dest].name + ' · textlab-5.' + IMG[dest].ext;
+  renderFindings(found);
+  readout('done', fileInput.blob.size, blob.size, 'bytes');
+  setStatus('Done. Five files ready below.');
+}
+
 $('run').onclick = async () => {
   const raw = $in.value;
-  if (!raw.trim()) { setStatus('Nothing to work with yet.', true); $in.focus(); return; }
   $('run').disabled = true;
   artifacts = [];
 
   try {
+    if (fileInput && fileInput.kind === 'image') { await runImage(); return; }
+    if (!raw.trim()) { setStatus('Nothing to work with yet.', true); $in.focus(); return; }
     const dest = $('dest').value;
     const mid = pick(['md','html','rtf','csv'].filter(f => f !== dest), 3);
     const chain = [
@@ -409,7 +505,7 @@ $('run').onclick = async () => {
       { fmt:mid[1], note:'second conversion' },
       { fmt:mid[2], note:'third conversion' },
       { fmt:dest,   note:'your destination' },
-    ];
+    ].map(s => ({ ...s, name:FORMATS[s.fmt].name }));
     renderStages(chain);
 
     setStatus('Scanning and cleaning…');
@@ -433,8 +529,9 @@ $('run').onclick = async () => {
     for (let i = 0; i < chain.length; i++) {
       const f = FORMATS[chain[i].fmt];
       const body = f.to(text);
-      artifacts.push({ fmt:chain[i].fmt, name:'textlab-' + (i + 1) + '.' + f.ext, body });
-      markStage(i, new Blob([body]).size);
+      const blob = new Blob([body], { type: f.mime + ';charset=utf-8' });
+      artifacts.push({ name:'textlab-' + (i + 1) + '.' + f.ext, blob, body });
+      markStage(i, blob.size);
       if (i < chain.length - 1) text = f.from(body);
       await new Promise(r => setTimeout(r, 90));   // lets the rail stamp in one stage at a time
     }
