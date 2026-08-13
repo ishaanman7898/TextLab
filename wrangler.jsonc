@@ -1,5 +1,8 @@
 {
   "name": "textlab",
+  "main": "src/worker.js",
   "compatibility_date": "2026-08-13",
-  "assets": { "directory": "./public" }
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  "ai": { "binding": "AI" },
+  "observability": { "enabled": true }
 }
