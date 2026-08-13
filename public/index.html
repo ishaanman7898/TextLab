@@ -458,7 +458,8 @@ async function runImage() {
   renderStages(chain);
 
   const found = [...fileInput.found];
-  artifacts.push({ name:'textlab-1-original.' + (fileInput.src === 'jpeg' ? 'jpg' : fileInput.src), blob:fileInput.blob });
+  const origExt = (fileInput.blob.name.match(/\.[a-z0-9]+$/i) || ['.bin'])[0];
+  artifacts.push({ name:'textlab-1-original' + origExt, blob:fileInput.blob });
   markStage(0, fileInput.blob.size);
 
   let blob = fileInput.blob;
