@@ -29,17 +29,17 @@
   h1 { font:800 clamp(38px,7vw,72px)/1 var(--display); margin:0; letter-spacing:-.03em; }
   h1 em { font-style:normal; color:var(--blue); }
   .tagline { font:400 14px/1.4 var(--sans); color:var(--dim); max-width:36ch; margin:0; }
-  .readout { margin-left:auto; font:500 11px/1.7 var(--mono); text-transform:uppercase; letter-spacing:.14em; color:var(--dim); text-align:right; }
+  .readout { margin-left:auto; font:500 13px/1.5 var(--sans); color:var(--dim); text-align:right; }
   .readout b { color:var(--ink); font-weight:600; }
 
   /* ---- panels ---- */
   .bench { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:22px; align-items:start; }
   .panel { background:var(--sheet); border:1px solid var(--rule); border-radius:2px; }
   .panel > h2 {
-    font:600 11px/1 var(--mono); text-transform:uppercase; letter-spacing:.18em; color:var(--dim);
-    margin:0; padding:11px 14px; border-bottom:1px solid var(--rule); display:flex; justify-content:space-between; gap:10px;
+    font:600 13px/1.3 var(--sans); color:var(--dim);
+    margin:0; padding:12px 14px; border-bottom:1px solid var(--rule); display:flex; justify-content:space-between; gap:10px;
   }
-  .panel > h2 span { color:var(--ink); }
+  .panel > h2 span { color:var(--ink); font-weight:400; }
   textarea {
     display:block; width:100%; min-height:330px; resize:vertical; border:0; padding:14px;
     background:transparent; color:var(--ink); font:400 13.5px/1.6 var(--mono);
@@ -50,7 +50,7 @@
 
   /* ---- controls: one bottom-aligned row of evenly sized rectangles ---- */
   .controls { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; padding:16px 0 0; }
-  button, .filebtn, .toggle {
+  button, .toggle {
     height:40px; display:inline-flex; align-items:center; justify-content:center;
     font:500 13px/1 var(--mono); color:var(--ink); background:var(--sheet);
     border:1px solid var(--ink); border-radius:2px; padding:0 16px; cursor:pointer; white-space:nowrap;
@@ -60,8 +60,8 @@
     font:500 13px/1 var(--mono); color:var(--ink); background:var(--sheet);
     border:1px solid var(--ink); border-radius:2px; padding:0 10px; cursor:pointer;
   }
-  button:hover, .filebtn:hover, select:hover, .toggle:hover { background:var(--ink); color:var(--sheet); }
-  button:focus-visible, select:focus-visible, .filebtn:focus-visible, .toggle:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+  button:hover, select:hover, .toggle:hover { background:var(--ink); color:var(--sheet); }
+  button:focus-visible, select:focus-visible, .toggle:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
   #run { background:var(--blue); border-color:var(--blue); color:#fff; font-weight:600; }
   #run:hover { background:var(--ink); border-color:var(--ink); }
   #run[disabled] { opacity:.55; cursor:progress; }
@@ -72,7 +72,7 @@
 
   /* ---- signature: the pipeline rail ---- */
   .rail { margin-top:34px; padding-top:22px; border-top:2px solid var(--ink); }
-  .rail h2 { font:600 11px/1 var(--mono); text-transform:uppercase; letter-spacing:.18em; color:var(--dim); margin:0 0 16px; }
+  .rail h2 { font:600 15px/1.3 var(--sans); color:var(--dim); margin:0 0 16px; }
   .stages { display:grid; grid-template-columns:repeat(5,1fr); gap:0; position:relative; }
   .stages::before { content:""; position:absolute; top:26px; left:6%; right:6%; border-top:1px dashed var(--rule); }
   .stage { position:relative; padding:0 8px; text-align:left; }
@@ -81,10 +81,10 @@
     margin:19px 0 14px; position:relative; z-index:1;
   }
   .stage.done .dot { background:var(--blue); border-color:var(--blue); }
-  .stage .n { font:500 11px/1 var(--mono); color:var(--dim); letter-spacing:.14em; }
+  .stage .n { font:500 12px/1 var(--sans); color:var(--dim); }
   .stage .fmt { font:800 26px/1 var(--display); letter-spacing:-.02em; margin:7px 0 3px; color:var(--rule); }
   .stage.done .fmt { color:var(--ink); }
-  .stage .meta { font:400 11.5px/1.5 var(--mono); color:var(--dim); min-height:2.4em; }
+  .stage .meta { font:400 12.5px/1.5 var(--sans); color:var(--dim); min-height:2.4em; }
   .stage button { margin-top:9px; padding:0 10px; font-size:12px; width:100%; height:34px; text-align:left; justify-content:flex-start; }
   .stage:not(.done) button { visibility:hidden; }
   .stage.done { animation:stamp .32s cubic-bezier(.2,.9,.3,1.4) both; }
@@ -93,16 +93,21 @@
 
   /* ---- findings ledger ---- */
   .ledger { margin-top:34px; padding-top:22px; border-top:2px solid var(--ink); }
-  .ledger h2 { font:600 11px/1 var(--mono); text-transform:uppercase; letter-spacing:.18em; color:var(--dim); margin:0 0 14px; }
+  .ledger h2 { font:600 15px/1.3 var(--sans); color:var(--dim); margin:0 0 14px; }
   table { width:100%; border-collapse:collapse; font:400 13px/1.5 var(--mono); }
   td { padding:8px 10px; border-bottom:1px solid var(--rule); vertical-align:top; }
   tr td:first-child { width:44px; font-weight:600; color:var(--signal); text-align:right; white-space:nowrap; }
   tr td:last-child { color:var(--dim); text-align:right; font-size:11.5px; text-transform:uppercase; letter-spacing:.1em; white-space:nowrap; }
-  .empty { font:400 13px/1.5 var(--mono); color:var(--dim); }
+  .empty { font:400 14px/1.5 var(--sans); color:var(--dim); }
 
-  footer { margin-top:40px; font:400 12px/1.7 var(--mono); color:var(--dim); }
-  footer p { margin:0 0 4px; }
+  footer {
+    margin-top:34px; padding:18px 0 0; border-top:2px solid var(--ink);
+    font:400 13px/1.6 var(--sans); color:var(--dim);
+    display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:6px 20px;
+  }
+  footer p { margin:0; }
   footer a { color:var(--blue); }
+  .version { font:500 11px/1 var(--mono); letter-spacing:.06em; color:var(--dim); white-space:nowrap; }
 
   @media (max-width:880px) {
     .bench { grid-template-columns:1fr; }
@@ -137,8 +142,8 @@
 </div>
 
 <div class="controls">
-  <label class="filebtn" for="file">Choose file</label>
-  <input id="file" type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.csv,.rtf,.json,.jpg,.jpeg,.png,.webp,.avif,.heic,.tif,.tiff,text/*,image/*,application/pdf" hidden>
+  <button type="button" id="tr" class="toggle" aria-pressed="true">Translate there and back</button>
+  <span class="status" id="status"></span>
   <select id="dest" aria-label="Final file type">
     <option value="doc">End as Word (.doc)</option>
     <option value="pdf">End as PDF (.pdf)</option>
@@ -152,10 +157,7 @@
     <option value="jpeg">End as JPEG</option>
     <option value="webp">End as WEBP</option>
   </select>
-  <button type="button" id="tr" class="toggle" aria-pressed="true">Translate there and back</button>
   <button id="run">Run the bench</button>
-  <button id="copy">Copy output</button>
-  <span class="status" id="status"></span>
 </div>
 
 <section class="rail">
@@ -169,8 +171,8 @@
 </section>
 
 <footer>
-  <p>Every step runs in your browser except the translation pass, which calls <span id="modelname">a Cloudflare Workers AI model</span> to send the text there and back.</p>
-  <p>Source: <a href="https://github.com/ishaanman7898/TextLab">github.com/ishaanman7898/TextLab</a></p>
+  <p>Every step runs in your browser except the translation pass, which calls <span id="modelname">a Cloudflare Workers AI model</span> to send the text there and back. Source: <a href="https://github.com/ishaanman7898/TextLab">github.com/ishaanman7898/TextLab</a></p>
+  <p class="version">TextLab v1.0.0</p>
 </footer>
 
 </div>
@@ -256,8 +258,6 @@ $in.addEventListener('paste', e => {
 });
 $in.addEventListener('input', () => readout('ready', $in.value.length, $out.value.length));
 
-$('file').addEventListener('change', e => e.target.files[0] && loadFile(e.target.files[0]));
-
 const $drop = $('drop');
 ['dragenter','dragover'].forEach(ev => $drop.addEventListener(ev, e => { e.preventDefault(); $drop.classList.add('over'); }));
 ['dragleave','drop'].forEach(ev => $drop.addEventListener(ev, e => { e.preventDefault(); $drop.classList.remove('over'); }));
@@ -314,11 +314,6 @@ $('stages').addEventListener('click', e => {
   link.click();
   URL.revokeObjectURL(link.href);
 });
-
-$('copy').onclick = async () => {
-  await navigator.clipboard.writeText($out.value);
-  setStatus('Output copied.');
-};
 
 $('tr').onclick = () => {
   const on = $('tr').getAttribute('aria-pressed') === 'true';
