@@ -34,9 +34,13 @@ async function checkMeaning(env, original, translated) {
   try {
     const r = await env.AI.run(CHECK_MODEL, {
       messages: [
-        { role: 'system', content: 'Compare an original passage with a translated-and-back version of it. ' +
-          'Reply with exactly one line: "MATCH" if the general meaning still holds, or "DRIFT: " followed by ' +
-          'a reason under 20 words if it does not. Minor rewording is fine; only flag real meaning changes.' },
+        { role: 'system', content: 'You are a strict proofreader comparing an original passage with a translated-and-back ' +
+          'version of it. Reply with exactly one line: "MATCH" only if the translated version reads as fluent, ' +
+          'grammatical English and preserves the same facts, numbers, and logical relationships, including words ' +
+          'like "not", "more than", "before" and "after" that reverse or qualify a claim. Reply "DRIFT: " followed ' +
+          'by a reason under 20 words if the meaning changed or reversed, if numbers/names/facts changed, if ' +
+          'connecting words were dropped so a sentence no longer makes sense, or if the text reads as broken or ' +
+          'garbled English. Minor rewording of an otherwise correct, coherent sentence is fine.' },
         // both inputs are already capped at MAX_CHARS by the route above, so the 3B model sees the whole passage, not just the opening
         { role: 'user', content: 'ORIGINAL:\n' + original + '\n\nTRANSLATED:\n' + translated },
       ],
