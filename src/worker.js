@@ -1,8 +1,9 @@
 // Static assets are served by the ASSETS binding; this handles the API routes.
 const MODEL = '@cf/meta/m2m100-1.2b';
+const CHECK_MODEL = '@cf/meta/llama-3.2-3b-instruct';
 const LANGS = ['spanish','russian','french','german','japanese','portuguese','italian',
                'korean','turkish','dutch','polish','swedish','indonesian','vietnamese'];
-const MAX_CHARS = 12000, CHUNK = 1200, MAX_CHUNKS = 16, LANES = 3;
+const MAX_CHARS = 12000, CHUNK = 1200, MAX_CHUNKS = 16, LANES = 3, CHECK_SLICE = 1500;
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
@@ -27,6 +28,28 @@ async function hop(env, text, source_lang, target_lang) {
   }
 }
 
+// A second, smaller model reads the before/after and flags translations that drifted off meaning.
+// Best-effort: if this model is unavailable or errors, the translation itself still stands.
+async function checkMeaning(env, original, translated) {
+  try {
+    const r = await env.AI.run(CHECK_MODEL, {
+      messages: [
+        { role: 'system', content: 'Compare an original passage with a translated-and-back version of it. ' +
+          'Reply with exactly one line: "MATCH" if the general meaning still holds, or "DRIFT: " followed by ' +
+          'a reason under 20 words if it does not. Minor rewording is fine; only flag real meaning changes.' },
+        { role: 'user', content: 'ORIGINAL:\n' + original.slice(0, CHECK_SLICE) + '\n\nTRANSLATED:\n' + translated.slice(0, CHECK_SLICE) },
+      ],
+    });
+    const out = (r && r.response || '').trim();
+    if (!out) return null;
+    const drift = /^drift/i.test(out);
+    const note = out.replace(/^(match|drift)\s*:?\s*/i, '').trim();
+    return { ok: !drift, note: note.slice(0, 160) };   // empty note means the model gave a bare verdict with no extra reasoning
+  } catch {
+    return null;
+  }
+}
+
 // Workers AI throttles hard when everything is fired at once, so keep a few lanes open at most.
 async function inLanes(items, fn) {
   const out = new Array(items.length);
@@ -43,7 +66,7 @@ export default {
 
     // Lets the page tell "the API is missing" apart from "the model misbehaved".
     if (pathname === '/api/health') {
-      return json({ ok: true, ai: typeof (env.AI && env.AI.run) === 'function', model: MODEL, langs: LANGS.length });
+      return json({ ok: true, ai: typeof (env.AI && env.AI.run) === 'function', model: MODEL, checkModel: CHECK_MODEL, langs: LANGS.length });
     }
 
     if (pathname !== '/api/translate') return json({ error: 'no such route: ' + pathname }, 404);
@@ -73,6 +96,8 @@ export default {
     // Every hop failing means nothing was translated, and the caller should hear about it.
     if (failed >= parts.length * 3) return json({ error: 'the translation model returned nothing' + (lastErr ? ': ' + lastErr : '') }, 502);
 
-    return json({ text: cur.join('\n\n'), route, chunks: parts.length, failed });
+    const final = cur.join('\n\n');
+    const check = await checkMeaning(env, text, final);
+    return json({ text: final, route, chunks: parts.length, failed, check });
   },
 };

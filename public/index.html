@@ -68,6 +68,7 @@
   .toggle[aria-pressed="true"] { background:var(--blue); border-color:var(--blue); color:#fff; }
   .toggle[aria-pressed="true"]:hover { background:var(--ink); border-color:var(--ink); }
   .status { font:500 12px/1.4 var(--mono); color:var(--blue); margin-left:auto; align-self:center; }
+  .status:empty { display:none; }
   .status.err { color:var(--signal); }
 
   /* ---- signature: the pipeline rail ---- */
@@ -99,6 +100,7 @@
   tr td:first-child { width:44px; font-weight:600; color:var(--signal); text-align:right; white-space:nowrap; }
   tr td:last-child { color:var(--dim); text-align:right; font-size:11.5px; text-transform:uppercase; letter-spacing:.1em; white-space:nowrap; }
   .empty { font:400 14px/1.5 var(--sans); color:var(--dim); }
+  #findings { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 
   footer {
     margin-top:34px; padding:18px 0 0; border-top:2px solid var(--ink);
@@ -116,6 +118,18 @@
     .stage { border-top:1px solid var(--rule); padding:0 0 14px; }
     .stage .dot { margin:14px 0 10px; }
     .readout { margin-left:0; text-align:left; }
+    /* iOS Safari zooms the page in on focus if a form control's font is under 16px */
+    textarea, select { font-size:16px; }
+    textarea { min-height:220px; }
+  }
+
+  /* ---- phones: stack the controls into full-width, thumb-sized rows ---- */
+  @media (max-width:600px) {
+    .controls { flex-direction:column; align-items:stretch; }
+    .controls > * { width:100%; }
+    .status { margin-left:0; text-align:left; }
+    button, .toggle, select { height:44px; }
+    .stage button { height:40px; }
   }
 </style>
 </head>
@@ -171,7 +185,7 @@
 </section>
 
 <footer>
-  <p>Every step runs in your browser except the translation pass, which calls <span id="modelname">a Cloudflare Workers AI model</span> to send the text there and back. Source: <a href="https://github.com/ishaanman7898/TextLab">github.com/ishaanman7898/TextLab</a></p>
+  <p>Every step runs in your browser except the translation pass: <span id="modelname">a Cloudflare Workers AI model</span> sends the text there and back, then a second model checks the result still makes sense. Source: <a href="https://github.com/ishaanman7898/TextLab">github.com/ishaanman7898/TextLab</a></p>
   <p class="version">TextLab v1.0.0</p>
 </footer>
 
@@ -440,7 +454,7 @@ readout('idle', 0, 0);
 fetch('/api/health')
   .then(r => r.json())
   .then(h => {
-    if (h.model) $('modelname').textContent = h.model + ' (Cloudflare Workers AI)';
+    if (h.model) $('modelname').textContent = h.model + (h.checkModel ? ' (checked by ' + h.checkModel + ')' : '');
     if (!h.ai) throw new Error('this deployment has no Workers AI binding');
   })
   .catch(err => {

@@ -67,6 +67,13 @@ Furthermore, technology has played a pivotal role in education — breaking down
   assert.strictEqual(broke.translated, false);
   assert.ok(broke.found.some(f => /Translation failed: model overloaded/.test(f.label)), 'the failure must reach the ledger');
 
+  // --- a flagged meaning check must reach the ledger -----------------------
+  const flagged = await runTextPipeline({
+    raw:ESSAY, dest:'txt', translate:true,
+    fetchImpl: async () => ({ ok:true, status:200, json: async () => ({ text:ESSAY, failed:0, check:{ ok:false, note:'lost a clause' } }) }),
+  });
+  assert.ok(flagged.found.some(f => /Meaning check: flagged, lost a clause/.test(f.label)), 'a flagged meaning check must reach the ledger');
+
   // --- provenance inspector ----------------------------------------------
   const seg = (marker, payload) => {
     const b = Buffer.from(payload, 'binary'), len = Buffer.alloc(2);
