@@ -69,9 +69,19 @@
   #run[disabled] { opacity:.55; cursor:progress; }
   .toggle[aria-pressed="true"] { background:var(--blue); border-color:var(--blue); color:#fff; }
   .toggle[aria-pressed="true"]:hover { background:var(--ink); border-color:var(--ink); }
-  .status { font:500 12px/1.4 var(--mono); color:var(--blue); align-self:center; }
+  .status {
+    font:500 13px/1.4 var(--sans); color:var(--blue); align-self:center;
+    display:inline-flex; align-items:center; gap:8px;
+  }
   .status:empty { display:none; }
   .status.err { color:var(--signal); }
+  .status.busy::before {
+    content:""; flex:none; width:8px; height:8px; border-radius:50%; background:var(--blue);
+    animation:status-pulse 1s ease-in-out infinite;
+  }
+  .status.busy.err::before { background:var(--signal); }
+  @keyframes status-pulse { 0%,100% { opacity:.25; transform:scale(.75); } 50% { opacity:1; transform:scale(1); } }
+  @media (prefers-reduced-motion:reduce) { .status.busy::before { animation:none; opacity:.7; } }
 
   /* ---- signature: the pipeline rail ---- */
   .rail { margin-top:34px; padding-top:22px; border-top:2px solid var(--ink); }
@@ -321,6 +331,7 @@ const $in = $('in'), $out = $('out'), $status = $('status');
 let pasteFindings = [], fileInput = null, artifacts = [];
 
 function setStatus(msg, isErr) { $status.textContent = msg; $status.classList.toggle('err', !!isErr); }
+function setBusy(on) { $status.classList.toggle('busy', !!on); }
 function readout(state, a, b, unit) {
   $('readout').innerHTML = state + '<br><b>' + a.toLocaleString() + '</b> ' + (unit || 'chars') + ' in / <b>' + b.toLocaleString() + '</b> out';
 }
@@ -348,6 +359,7 @@ const $drop = $('drop');
 $drop.addEventListener('drop', e => e.dataTransfer.files[0] && loadFile(e.dataTransfer.files[0]));
 
 async function loadFile(file) {
+  setBusy(true);
   setStatus('Reading ' + file.name + '…');
   try {
     fileInput = await readFile(file);
@@ -363,6 +375,8 @@ async function loadFile(file) {
   } catch (err) {
     fileInput = null;
     setStatus('Could not read that file: ' + err.message, true);
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -474,6 +488,7 @@ let ticker = null;
 $('run').onclick = async () => {
   const raw = $in.value;
   $('run').disabled = true;
+  setBusy(true);
   artifacts = [];
 
   try {
@@ -515,6 +530,7 @@ $('run').onclick = async () => {
   } finally {
     clearInterval(ticker);
     $('run').disabled = false;
+    setBusy(false);
   }
 };
 

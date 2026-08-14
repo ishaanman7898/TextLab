@@ -234,6 +234,7 @@ export async function runTextPipeline(opts) {
   ].map(s => ({ ...s, name:FORMATS[s.fmt].name }));
   if (opts.onChain) opts.onChain(chain);
 
+  onStatus('Sweeping hidden characters and metadata…');
   const swept = clean(raw);
   let text = swept.text;
   const found = [...extraFindings, ...swept.found];
@@ -261,6 +262,7 @@ export async function runTextPipeline(opts) {
   // Each step really serialises to its format and parses back before the next one.
   const artifacts = [];
   for (let i = 0; i < chain.length; i++) {
+    onStatus('Step ' + (i + 1) + ' of ' + chain.length + ' — writing ' + chain[i].name + ' (' + chain[i].note + ')…');
     const f = FORMATS[chain[i].fmt];
     const body = f.to(text);
     const artifact = { fmt:chain[i].fmt, name:'textlab-' + (i + 1) + '.' + f.ext, body, mime:f.mime };
