@@ -3,7 +3,7 @@ const MODEL = '@cf/meta/m2m100-1.2b';
 const CHECK_MODEL = '@cf/meta/llama-3.2-3b-instruct';
 const LANGS = ['spanish','russian','french','german','japanese','portuguese','italian',
                'korean','turkish','dutch','polish','swedish','indonesian','vietnamese'];
-const MAX_CHARS = 12000, CHUNK = 1200, MAX_CHUNKS = 16, LANES = 3, CHECK_SLICE = 1500;
+const MAX_CHARS = 12000, CHUNK = 1200, MAX_CHUNKS = 16, LANES = 3;
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
@@ -37,7 +37,8 @@ async function checkMeaning(env, original, translated) {
         { role: 'system', content: 'Compare an original passage with a translated-and-back version of it. ' +
           'Reply with exactly one line: "MATCH" if the general meaning still holds, or "DRIFT: " followed by ' +
           'a reason under 20 words if it does not. Minor rewording is fine; only flag real meaning changes.' },
-        { role: 'user', content: 'ORIGINAL:\n' + original.slice(0, CHECK_SLICE) + '\n\nTRANSLATED:\n' + translated.slice(0, CHECK_SLICE) },
+        // both inputs are already capped at MAX_CHARS by the route above, so the 3B model sees the whole passage, not just the opening
+        { role: 'user', content: 'ORIGINAL:\n' + original + '\n\nTRANSLATED:\n' + translated },
       ],
     });
     const out = (r && r.response || '').trim();
