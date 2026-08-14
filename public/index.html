@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TextLab — text bench</title>
-<meta name="description" content="Paste or drop a file. TextLab strips invisible characters and provenance metadata, round-trips the text through two languages, and hands back five files.">
+<title>TextLab</title>
+<meta name="description" content="Clean hidden characters and file metadata out of text, PDFs and images, then convert the result between file formats.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%23e4e2dc'/><path d='M7 9h18M7 16h13M7 23h9' stroke='%232438d6' stroke-width='3'/></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --paper:#e4e2dc; --sheet:#f5f4f0; --ink:#16181c; --dim:#6b685f; --rule:#c3bfb4;
+    --paper:#e4e2dc; --sheet:#f5f4f0; --ink:#16181c; --dim:var(--ink); --rule:#c3bfb4;
     --blue:#2438d6; --signal:#d9410f;
     --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
     --sans:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
@@ -20,18 +20,15 @@
   }
   * { box-sizing:border-box; }
   html { -webkit-text-size-adjust:100%; }
-  body {
-    margin:0; background:var(--paper); color:var(--ink); font:15px/1.55 var(--sans);
-    background-image:linear-gradient(var(--rule) 1px, transparent 1px);
-    background-size:100% 34px; background-position:0 -1px;
-  }
+  body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.55 var(--sans); }
   .wrap { max-width:1180px; margin:0 auto; padding:0 20px 72px; }
 
   /* ---- masthead: instrument label ---- */
-  header { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px 26px; padding:30px 0 18px; border-bottom:2px solid var(--ink); }
-  h1 { font:800 clamp(38px,7vw,72px)/0.86 var(--display); margin:0; letter-spacing:-.035em; }
+  header { display:flex; flex-wrap:wrap; align-items:center; gap:14px 26px; padding:34px 0 20px; border-bottom:2px solid var(--ink); }
+  .mast { display:flex; flex-direction:column; gap:8px; }
+  h1 { font:800 clamp(38px,7vw,72px)/1 var(--display); margin:0; letter-spacing:-.03em; }
   h1 em { font-style:normal; color:var(--blue); }
-  .tagline { font:400 14px/1.4 var(--sans); color:var(--dim); max-width:34ch; margin:0 0 4px; }
+  .tagline { font:400 14px/1.4 var(--sans); color:var(--dim); max-width:36ch; margin:0; }
   .readout { margin-left:auto; font:500 11px/1.7 var(--mono); text-transform:uppercase; letter-spacing:.14em; color:var(--dim); text-align:right; }
   .readout b { color:var(--ink); font-weight:600; }
 
@@ -48,23 +45,29 @@
     background:transparent; color:var(--ink); font:400 13.5px/1.6 var(--mono);
   }
   textarea:focus-visible { outline:2px solid var(--blue); outline-offset:-2px; }
-  #out { color:#22252b; }
+  #out { color:var(--ink); }
   .drop.over { outline:2px dashed var(--blue); outline-offset:-6px; background:#eef0fe; }
 
-  /* ---- controls ---- */
-  .controls { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:14px 0 0; }
-  button, select, .filebtn {
+  /* ---- controls: one bottom-aligned row of evenly sized rectangles ---- */
+  .controls { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; padding:16px 0 0; }
+  button, .filebtn, .toggle {
+    height:40px; display:inline-flex; align-items:center; justify-content:center;
     font:500 13px/1 var(--mono); color:var(--ink); background:var(--sheet);
-    border:1px solid var(--ink); border-radius:2px; padding:10px 13px; cursor:pointer;
+    border:1px solid var(--ink); border-radius:2px; padding:0 16px; cursor:pointer; white-space:nowrap;
   }
-  button:hover, .filebtn:hover, select:hover { background:var(--ink); color:var(--sheet); }
-  button:focus-visible, select:focus-visible, .filebtn:focus-visible, input:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
-  #run { background:var(--blue); border-color:var(--blue); color:#fff; font-weight:600; padding:10px 20px; }
+  select {
+    height:40px; box-sizing:border-box;
+    font:500 13px/1 var(--mono); color:var(--ink); background:var(--sheet);
+    border:1px solid var(--ink); border-radius:2px; padding:0 10px; cursor:pointer;
+  }
+  button:hover, .filebtn:hover, select:hover, .toggle:hover { background:var(--ink); color:var(--sheet); }
+  button:focus-visible, select:focus-visible, .filebtn:focus-visible, .toggle:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+  #run { background:var(--blue); border-color:var(--blue); color:#fff; font-weight:600; }
   #run:hover { background:var(--ink); border-color:var(--ink); }
   #run[disabled] { opacity:.55; cursor:progress; }
-  .check { display:inline-flex; align-items:center; gap:7px; font:500 12px/1 var(--mono); text-transform:uppercase; letter-spacing:.08em; }
-  .check input { accent-color:var(--blue); width:15px; height:15px; }
-  .status { font:500 12px/1.4 var(--mono); color:var(--blue); margin-left:auto; }
+  .toggle[aria-pressed="true"] { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .toggle[aria-pressed="true"]:hover { background:var(--ink); border-color:var(--ink); }
+  .status { font:500 12px/1.4 var(--mono); color:var(--blue); margin-left:auto; align-self:center; }
   .status.err { color:var(--signal); }
 
   /* ---- signature: the pipeline rail ---- */
@@ -82,7 +85,7 @@
   .stage .fmt { font:800 26px/1 var(--display); letter-spacing:-.02em; margin:7px 0 3px; color:var(--rule); }
   .stage.done .fmt { color:var(--ink); }
   .stage .meta { font:400 11.5px/1.5 var(--mono); color:var(--dim); min-height:2.4em; }
-  .stage button { margin-top:9px; padding:7px 10px; font-size:12px; width:100%; text-align:left; }
+  .stage button { margin-top:9px; padding:0 10px; font-size:12px; width:100%; height:34px; text-align:left; justify-content:flex-start; }
   .stage:not(.done) button { visibility:hidden; }
   .stage.done { animation:stamp .32s cubic-bezier(.2,.9,.3,1.4) both; }
   @keyframes stamp { from { opacity:0; transform:translateY(9px) } to { opacity:1; transform:none } }
@@ -98,6 +101,7 @@
   .empty { font:400 13px/1.5 var(--mono); color:var(--dim); }
 
   footer { margin-top:40px; font:400 12px/1.7 var(--mono); color:var(--dim); }
+  footer p { margin:0 0 4px; }
   footer a { color:var(--blue); }
 
   @media (max-width:880px) {
@@ -114,21 +118,21 @@
 <div class="wrap">
 
 <header>
-  <div>
+  <div class="mast">
     <h1>Text<em>Lab</em></h1>
-    <p class="tagline">Paste it, drop it, and take back a file with nothing hiding in it. Text, PDFs and images, every hidden record itemised before it goes.</p>
+    <p class="tagline">Drop a file or paste text below. TextLab clears hidden characters and file metadata, then hands back the result in whatever format you choose.</p>
   </div>
   <div class="readout" id="readout">idle<br><b>0</b> chars in / <b>0</b> out</div>
 </header>
 
 <div class="bench">
   <section class="panel drop" id="drop">
-    <h2>Input <span id="srcname">paste or drop a file</span></h2>
-    <textarea id="in" placeholder="Paste text here, or drop a file on this panel: .pdf, .txt, .md, .html, .csv, .rtf, or an image (.jpg, .png, .webp, .avif, .heic) to inspect for Content Credentials." autofocus></textarea>
+    <h2>Input <span id="srcname">nothing loaded yet</span></h2>
+    <textarea id="in" placeholder="Paste text, or drop a file here: .pdf, .txt, .md, .html, .csv, .rtf, or an image (.jpg, .png, .webp, .avif, .heic) to check for Content Credentials." autofocus></textarea>
   </section>
   <section class="panel">
-    <h2>Output <span id="outfmt">plain text</span></h2>
-    <textarea id="out" readonly placeholder="The cleaned text lands here once you run the bench."></textarea>
+    <h2>Output <span id="outfmt">waiting on a run</span></h2>
+    <textarea id="out" readonly placeholder="Results show up here after you run the bench."></textarea>
   </section>
 </div>
 
@@ -137,6 +141,7 @@
   <input id="file" type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.csv,.rtf,.json,.jpg,.jpeg,.png,.webp,.avif,.heic,.tif,.tiff,text/*,image/*,application/pdf" hidden>
   <select id="dest" aria-label="Final file type">
     <option value="doc">End as Word (.doc)</option>
+    <option value="pdf">End as PDF (.pdf)</option>
     <option value="txt">End as plain text (.txt)</option>
     <option value="md">End as Markdown (.md)</option>
     <option value="html">End as HTML (.html)</option>
@@ -147,25 +152,25 @@
     <option value="jpeg">End as JPEG</option>
     <option value="webp">End as WEBP</option>
   </select>
-  <label class="check"><input type="checkbox" id="tr" checked> Round-trip 2 languages</label>
+  <button type="button" id="tr" class="toggle" aria-pressed="true">Translate there and back</button>
   <button id="run">Run the bench</button>
   <button id="copy">Copy output</button>
   <span class="status" id="status"></span>
 </div>
 
 <section class="rail">
-  <h2>Conversion chain — five files, in order</h2>
+  <h2>Five files, one after another</h2>
   <div class="stages" id="stages"></div>
 </section>
 
 <section class="ledger">
-  <h2>What was found and removed</h2>
-  <div id="findings"><p class="empty">Nothing scanned yet. Run the bench to see the ledger.</p></div>
+  <h2>What this pass changed</h2>
+  <div id="findings"><p class="empty">Run the bench to see what changed here.</p></div>
 </section>
 
 <footer>
-  Everything except the language round-trip happens in your browser, the round-trip runs on Cloudflare Workers AI.
-  Source: <a href="https://github.com/ishaanman7898/TextLab">github.com/ishaanman7898/TextLab</a>
+  <p>Every step runs in your browser except the translation pass, which calls <span id="modelname">a Cloudflare Workers AI model</span> to send the text there and back.</p>
+  <p>Source: <a href="https://github.com/ishaanman7898/TextLab">github.com/ishaanman7898/TextLab</a></p>
 </footer>
 
 </div>
@@ -241,7 +246,7 @@ function readout(state, a, b, unit) {
 function setMode(isImg) {
   $('dest').hidden = isImg;
   $('imgdest').hidden = !isImg;
-  $('tr').closest('.check').hidden = isImg;   // nothing to translate in a photograph
+  $('tr').hidden = isImg;   // nothing to translate in a photograph
 }
 
 $in.addEventListener('paste', e => {
@@ -270,7 +275,7 @@ async function loadFile(file) {
             fileInput.kind === 'image' ? 'bytes' : 'chars');
     setStatus(fileInput.kind === 'image'
       ? 'Inspected ' + fileInput.src.toUpperCase() + '. ' + fileInput.found.length + ' record(s) found.'
-      : 'Loaded. Run the bench when ready.');
+      : 'Loaded. Ready when you are.');
   } catch (err) {
     fileInput = null;
     setStatus('Could not read that file: ' + err.message, true);
@@ -279,7 +284,7 @@ async function loadFile(file) {
 
 function renderFindings(found) {
   const box = $('findings');
-  if (!found.length) { box.innerHTML = '<p class="empty">Clean sweep. No invisible characters, metadata or markers in this text.</p>'; return; }
+  if (!found.length) { box.innerHTML = '<p class="empty">Nothing hidden in this text.</p>'; return; }
   box.innerHTML = '<table><tbody>' + found.map(f =>
     '<tr><td>' + (f.count || '—') + '</td><td>' + escapeCell(f.label) + '</td><td>' + escapeCell(f.act) + '</td></tr>').join('') + '</tbody></table>';
 }
@@ -315,6 +320,11 @@ $('copy').onclick = async () => {
   setStatus('Output copied.');
 };
 
+$('tr').onclick = () => {
+  const on = $('tr').getAttribute('aria-pressed') === 'true';
+  $('tr').setAttribute('aria-pressed', String(!on));
+};
+
 /* ---- image bench: re-encode the pixels, which is what drops C2PA and friends ---- */
 
 const IMG = {
@@ -338,11 +348,11 @@ async function runImage() {
   const dest = $('imgdest').value;
   const mid = pick(['png','jpeg','webp'], 3);
   renderStages([
-    { name:'ORIG', note:'the file as dropped, records intact' },
-    { name:IMG[mid[0]].name, note:'first re-encode' },
-    { name:IMG[mid[1]].name, note:'second re-encode' },
-    { name:IMG[mid[2]].name, note:'third re-encode' },
-    { name:IMG[dest].name,   note:'your destination' },
+    { name:'ORIG', note:'as dropped, nothing removed yet' },
+    { name:IMG[mid[0]].name, note:'pass one' },
+    { name:IMG[mid[1]].name, note:'pass two' },
+    { name:IMG[mid[2]].name, note:'pass three' },
+    { name:IMG[dest].name,   note:'the file you keep' },
   ]);
 
   const found = [...fileInput.found];
@@ -389,15 +399,15 @@ $('run').onclick = async () => {
 
   try {
     if (fileInput && fileInput.kind === 'image') { await runImage(); return; }
-    if (!raw.trim()) { setStatus('Nothing to work with yet.', true); $in.focus(); return; }
+    if (!raw.trim()) { setStatus('Nothing to run yet, add some text first.', true); $in.focus(); return; }
 
     const dest = $('dest').value;
-    const translate = $('tr').checked;
+    const translate = $('tr').hidden ? false : $('tr').getAttribute('aria-pressed') === 'true';
 
     // The round-trip takes tens of seconds; a counter keeps that from reading as a hang.
     let secs = 0;
     ticker = setInterval(() => {
-      if (/^Round-trip running/.test($status.textContent)) setStatus('Round-trip running… ' + (++secs) + 's, 15 to 40s is normal');
+      if (/^Translating there and back/.test($status.textContent)) setStatus('Translating there and back… ' + (++secs) + 's, 15 to 40s is normal');
     }, 1000);
 
     const result = await runTextPipeline({
@@ -406,7 +416,8 @@ $('run').onclick = async () => {
       onStatus: setStatus,
       onChain: renderStages,
       onStage: async (i, art) => {
-        const blob = new Blob([art.body], { type: art.mime + ';charset=utf-8' });
+        const mime = art.mime + (art.fmt === 'pdf' ? '' : ';charset=utf-8');
+        const blob = new Blob([art.body], { type: mime });
         artifacts.push({ name:art.name, blob });
         markStage(i, blob.size);
         await new Promise(r => setTimeout(r, 90));   // lets the rail stamp in one stage at a time
@@ -418,7 +429,7 @@ $('run').onclick = async () => {
     renderFindings(result.found);
     readout('done', raw.length, result.text.length);
     if (!$status.classList.contains('err')) {
-      setStatus(result.translated ? 'Done, round-trip included. Five files ready below.' : 'Done. Five files ready below.');
+      setStatus(result.translated ? 'Done, with translation. Five files ready below.' : 'Done. Five files ready below.');
     }
   } catch (err) {
     setStatus('Run failed: ' + err.message, true);
@@ -433,10 +444,13 @@ readout('idle', 0, 0);
 // Check the round-trip API up front, so an unreachable one cannot masquerade as a no-op.
 fetch('/api/health')
   .then(r => r.json())
-  .then(h => { if (!h.ai) throw new Error('this deployment has no Workers AI binding'); })
+  .then(h => {
+    if (h.model) $('modelname').textContent = h.model + ' (Cloudflare Workers AI)';
+    if (!h.ai) throw new Error('this deployment has no Workers AI binding');
+  })
   .catch(err => {
-    $('tr').checked = false;
-    setStatus('Round-trip switched off: ' + err.message, true);
+    $('tr').setAttribute('aria-pressed', 'false');
+    setStatus('Translation switched off: ' + err.message, true);
   });
 </script>
 </body>

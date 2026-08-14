@@ -48,7 +48,7 @@ Furthermore, technology has played a pivotal role in education — breaking down
   for (const a of INTERMEDIATES) for (const b of INTERMEDIATES) for (const c of INTERMEDIATES) {
     if (a !== b && b !== c && a !== c) perms.push([a, b, c]);
   }
-  for (const dest of ['doc','txt','md','html','rtf']) {
+  for (const dest of ['doc','txt','md','html','rtf','pdf']) {
     for (const mid of perms.filter(p => !p.includes(dest))) {
       const r = await runTextPipeline({ raw:ESSAY, dest, mid, translate:false });
       assert.strictEqual(r.artifacts.length, 5, 'chain must produce five files');
@@ -65,7 +65,7 @@ Furthermore, technology has played a pivotal role in education — breaking down
   });
   assert.strictEqual(broke.text, expected, 'a failed round-trip must still deliver the cleaned text');
   assert.strictEqual(broke.translated, false);
-  assert.ok(broke.found.some(f => /Round-trip failed: model overloaded/.test(f.label)), 'the failure must reach the ledger');
+  assert.ok(broke.found.some(f => /Translation failed: model overloaded/.test(f.label)), 'the failure must reach the ledger');
 
   // --- provenance inspector ----------------------------------------------
   const seg = (marker, payload) => {
@@ -100,7 +100,7 @@ Furthermore, technology has played a pivotal role in education — breaking down
     const apiBase = process.env.TEXTLAB_URL || 'https://textlab.ishman.workers.dev';
     const t0 = Date.now();
     const live = await runTextPipeline({ raw:ESSAY, dest:'doc', translate:true, apiBase });
-    const note = live.found.find(f => /Round-trip/.test(f.label));
+    const note = live.found.find(f => /Translated/.test(f.label));
     assert.ok(live.translated, 'live round-trip did not run: ' + (note && note.label));
     assert.ok(live.text.length > 100, 'live round-trip came back too short');
     assert.notStrictEqual(live.text, expected, 'live round-trip returned the text unchanged');

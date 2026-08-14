@@ -99,7 +99,97 @@ export const FORMATS = {
           to:t => '<html xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"></head><body>' +
                   paras(t).map(p => '<p>' + escHtml(p) + '</p>').join('') + '</body></html>',
           from:s => stripTags(s) },
+  pdf:  { ext:'pdf',  mime:'application/pdf',    name:'PDF',
+          to:t => pdfBuild(t),
+          from:b => pdfExtract(b) },
 };
+
+// ponytail: hand-rolled single-byte-per-char PDF writer, WinAnsi range only (0x20-0x7E, 0xA0-0xFF).
+// Characters outside that range become "?" rather than embedding a Unicode font.
+const PDF_PAGE = { w:612, h:792, margin:54, fontSize:10, leading:14 };
+
+function pdfEscape(s) { return s.replace(/[\\()]/g, c => '\\' + c); }
+
+function pdfWrapWords(line, width) {
+  const words = line.split(' ');
+  const out = [];
+  let cur = '';
+  for (const w of words) {
+    if (!cur) cur = w;
+    else if ((cur + ' ' + w).length <= width) cur += ' ' + w;
+    else { out.push(cur); cur = w; }
+  }
+  out.push(cur);
+  return out;
+}
+
+function pdfBuild(text) {
+  const { w:W, h:H, margin:M, fontSize:FS, leading:LEAD } = PDF_PAGE;
+  const width = Math.max(20, Math.floor((W - M * 2) / (FS * 0.5)));
+  const linesPerPage = Math.max(1, Math.floor((H - M * 2) / LEAD));
+
+  const lines = [];
+  paras(text).forEach((p, pi) => {
+    if (pi) lines.push('');   // a blank Tj marks a paragraph break for pdfExtract to find later
+    for (const l of pdfWrapWords(p, width)) lines.push(l.replace(/[^\x20-\x7E\xA0-\xFF\n]/g, '?'));
+  });
+
+  const pages = [];
+  for (let i = 0; i < lines.length || !pages.length; i += linesPerPage) pages.push(lines.slice(i, i + linesPerPage));
+
+  const streams = pages.map(ls => {
+    let body = 'BT /F1 ' + FS + ' Tf ' + LEAD + ' TL ' + M + ' ' + (H - M) + ' Td\n';
+    body += ls.map((l, i) => (i ? 'T*\n' : '') + '(' + pdfEscape(l) + ') Tj').join('\n');
+    return body + '\nET';
+  });
+
+  // Object numbers: 1 catalog, 2 pages, 3 font, then a page + content pair per page from 4 up.
+  const CATALOG = 1, PAGES = 2, FONT = 3;
+  const pageObj = i => 4 + i * 2, contentObj = i => 5 + i * 2;
+
+  const objs = [];
+  objs[CATALOG] = '<< /Type /Catalog /Pages ' + PAGES + ' 0 R >>';
+  objs[PAGES] = '<< /Type /Pages /Count ' + pages.length + ' /Kids [' +
+    pages.map((_, i) => pageObj(i) + ' 0 R').join(' ') + '] >>';
+  objs[FONT] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  pages.forEach((_, i) => {
+    objs[pageObj(i)] = '<< /Type /Page /Parent ' + PAGES + ' 0 R /MediaBox [0 0 ' + W + ' ' + H + ']' +
+      ' /Resources << /Font << /F1 ' + FONT + ' 0 R >> >> /Contents ' + contentObj(i) + ' 0 R >>';
+    objs[contentObj(i)] = { stream: streams[i] };
+  });
+
+  let out = '%PDF-1.4\n';
+  const offsets = [0];
+  for (let i = 1; i < objs.length; i++) {
+    offsets[i] = out.length;
+    const o = objs[i];
+    out += o.stream !== undefined
+      ? i + ' 0 obj\n<< /Length ' + o.stream.length + ' >>\nstream\n' + o.stream + '\nendstream\nendobj\n'
+      : i + ' 0 obj\n' + o + '\nendobj\n';
+  }
+  const xrefStart = out.length;
+  out += 'xref\n0 ' + objs.length + '\n0000000000 65535 f \n';
+  for (let i = 1; i < objs.length; i++) out += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  out += 'trailer\n<< /Size ' + objs.length + ' /Root ' + CATALOG + ' 0 R >>\nstartxref\n' + xrefStart + '\n%%EOF';
+
+  return Uint8Array.from(out, c => c.charCodeAt(0));
+}
+
+function pdfBytesToStr(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return s;
+}
+
+function pdfExtract(bytes) {
+  const s = pdfBytesToStr(bytes);
+  const raw = [...s.matchAll(/\(((?:\\.|[^\\)])*)\)\s*Tj/g)].map(m => m[1].replace(/\\(.)/g, '$1'));
+  let out = '', para = [];
+  const flush = () => { if (para.length) { out += (out ? '\n\n' : '') + para.join(' '); para = []; } };
+  for (const l of raw) { if (l === '') flush(); else para.push(l); }
+  flush();
+  return out;
+}
 
 export const INTERMEDIATES = ['md','html','rtf','csv'];
 export const pick = (arr, n) => [...arr].sort(() => Math.random() - 0.5).slice(0, n);
@@ -135,11 +225,11 @@ export async function runTextPipeline(opts) {
   // The chain is settled first so the UI can draw the rail before the slow part starts.
   const mid = opts.mid || pick(INTERMEDIATES.filter(f => f !== dest), 3);
   const chain = [
-    { fmt:'txt',  note:'extracted source' },
-    { fmt:mid[0], note:'first conversion' },
-    { fmt:mid[1], note:'second conversion' },
-    { fmt:mid[2], note:'third conversion' },
-    { fmt:dest,   note:'your destination' },
+    { fmt:'txt',  note:'source text' },
+    { fmt:mid[0], note:'pass one' },
+    { fmt:mid[1], note:'pass two' },
+    { fmt:mid[2], note:'pass three' },
+    { fmt:dest,   note:'the file you keep' },
   ].map(s => ({ ...s, name:FORMATS[s.fmt].name }));
   if (opts.onChain) opts.onChain(chain);
 
@@ -150,19 +240,19 @@ export async function runTextPipeline(opts) {
 
   if (translate) {
     const t0 = Date.now();
-    onStatus('Round-trip running, this takes 15 to 40 seconds…');
+    onStatus('Translating there and back, usually 15 to 40 seconds…');
     try {
       const t = await roundTrip(text, opts);
       // the translator sometimes welds sentences together; two lowercase letters before the stop keeps "U.S.A." safe
       text = clean(t.text.replace(/([a-z]{2}[.!?])([A-Z])/g, '$1 $2')).text;
       translated = true;
       const secs = Math.round((Date.now() - t0) / 1000);
-      found.push({ count:3, label:'Round-trip: english → ' + t.langs[0] + ' → ' + t.langs[1] + ' → english (' + secs + 's)', act:'rewritten' });
-      if (t.failed) found.push({ count:t.failed, label:'Paragraphs the translator could not process, left in english', act:'passed through' });
-      onStatus('Round-trip done via ' + t.langs.join(' and ') + '.');
+      found.push({ count:3, label:'Translated english → ' + t.langs[0] + ' → ' + t.langs[1] + ' → english (' + secs + 's)', act:'rewritten' });
+      if (t.failed) found.push({ count:t.failed, label:'Paragraphs the translator skipped, left in english', act:'passed through' });
+      onStatus('Translated through ' + t.langs.join(' and ') + '.');
     } catch (err) {
-      found.push({ count:0, label:'Round-trip failed: ' + err.message, act:'not run' });
-      onStatus('Round-trip failed: ' + err.message, true);
+      found.push({ count:0, label:'Translation failed: ' + err.message, act:'not run' });
+      onStatus('Translation failed: ' + err.message, true);
     }
   }
 
