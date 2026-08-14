@@ -14,13 +14,17 @@ globalThis.DOMParser = class {
 const ESSAY = `The Role of Technology in Shaping Modern Society
 
 In today's fast-paced world, technology has become an integral part of our daily lives; from the moment we wake up to the moment we sleep.
-A second line inside the same paragraph.
 
 Furthermore, technology has played a pivotal role in education — breaking down geographical barriers.`;
 
 (async () => {
-  const { clean, FORMATS, runTextPipeline, INTERMEDIATES } = await import('./public/pipeline.js');
+  const { clean, paras, FORMATS, runTextPipeline, INTERMEDIATES } = await import('./public/pipeline.js');
   const { inspect, sniff } = await import('./public/inspect.js');
+
+  // a single Enter between paragraphs must split them, even one-liners and headings
+  assert.deepStrictEqual(
+    paras('Heading\nOne sentence paragraph.\nAnother one.\n\nAfter a blank line too.'),
+    ['Heading', 'One sentence paragraph.', 'Another one.', 'After a blank line too.']);
 
   // --- cleaning -----------------------------------------------------------
   const zw = clean('a​b﻿­c');

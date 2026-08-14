@@ -60,7 +60,8 @@ export function scanHtml(html) {
 
 /* ------------------------------------------------------------------ formats */
 
-export const paras = t => t.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+// A single newline is a paragraph break too (headings and one-sentence paragraphs are just one line).
+export const paras = t => t.split(/\n+/).map(p => p.trim()).filter(Boolean);
 export const escHtml = t => t.replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
 
 export const stripTags = h => {
