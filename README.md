@@ -22,4 +22,7 @@ Reads `.pdf` (pdf.js), `.txt`, `.md`, `.html`, `.csv`, `.rtf`. Everything except
 
 `node test.js` runs the cleaning rules, every format round-trip, all 30 conversion-chain permutations (the chain must return the text byte for byte), a simulated round-trip failure, and the C2PA inspector against a synthesised JPEG.
 `node test.js --live` also runs the whole pipeline against the deployment, including a real translation round-trip.
-`npx wrangler deploy` ships it.
+
+## Deploying
+
+Cloudflare Workers Builds is connected to this repo: a push to `main` builds and deploys automatically. To ship a change without waiting on that, run `npx wrangler deploy` locally instead.
