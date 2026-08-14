@@ -50,6 +50,8 @@
 
   /* ---- controls: one bottom-aligned row of evenly sized rectangles ---- */
   .controls { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; padding:16px 0 0; }
+  .controls-right { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; margin-left:auto; }
+  .mobile-only { display:none; }
   button, .toggle {
     height:40px; display:inline-flex; align-items:center; justify-content:center;
     font:500 13px/1 var(--mono); color:var(--ink); background:var(--sheet);
@@ -67,7 +69,7 @@
   #run[disabled] { opacity:.55; cursor:progress; }
   .toggle[aria-pressed="true"] { background:var(--blue); border-color:var(--blue); color:#fff; }
   .toggle[aria-pressed="true"]:hover { background:var(--ink); border-color:var(--ink); }
-  .status { font:500 12px/1.4 var(--mono); color:var(--blue); margin-left:auto; align-self:center; }
+  .status { font:500 12px/1.4 var(--mono); color:var(--blue); align-self:center; }
   .status:empty { display:none; }
   .status.err { color:var(--signal); }
 
@@ -125,9 +127,11 @@
 
   /* ---- phones: stack the controls into full-width, thumb-sized rows ---- */
   @media (max-width:600px) {
-    .controls { flex-direction:column; align-items:stretch; }
-    .controls > * { width:100%; }
-    .status { margin-left:0; text-align:left; }
+    .mobile-only { display:inline-flex; }
+    .controls, .controls-right { flex-direction:column; align-items:stretch; }
+    .controls > *, .controls-right > * { width:100%; }
+    .controls-right { margin-left:0; }
+    .status { text-align:left; }
     button, .toggle, select { height:44px; }
     .stage button { height:40px; }
   }
@@ -156,22 +160,26 @@
 </div>
 
 <div class="controls">
+  <button type="button" id="pickfile" class="mobile-only">Pick a file</button>
+  <input id="file" type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.csv,.rtf,.json,.jpg,.jpeg,.png,.webp,.avif,.heic,.tif,.tiff,text/*,image/*,application/pdf" hidden>
   <button type="button" id="tr" class="toggle" aria-pressed="true">Translate there and back</button>
   <span class="status" id="status"></span>
-  <select id="dest" aria-label="Final file type">
-    <option value="doc">End as Word (.doc)</option>
-    <option value="pdf">End as PDF (.pdf)</option>
-    <option value="txt">End as plain text (.txt)</option>
-    <option value="md">End as Markdown (.md)</option>
-    <option value="html">End as HTML (.html)</option>
-    <option value="rtf">End as RTF (.rtf)</option>
-  </select>
-  <select id="imgdest" aria-label="Final image type" hidden>
-    <option value="png">End as PNG</option>
-    <option value="jpeg">End as JPEG</option>
-    <option value="webp">End as WEBP</option>
-  </select>
-  <button id="run">Run the bench</button>
+  <div class="controls-right">
+    <select id="dest" aria-label="Final file type">
+      <option value="doc">End as Word (.doc)</option>
+      <option value="pdf">End as PDF (.pdf)</option>
+      <option value="txt">End as plain text (.txt)</option>
+      <option value="md">End as Markdown (.md)</option>
+      <option value="html">End as HTML (.html)</option>
+      <option value="rtf">End as RTF (.rtf)</option>
+    </select>
+    <select id="imgdest" aria-label="Final image type" hidden>
+      <option value="png">End as PNG</option>
+      <option value="jpeg">End as JPEG</option>
+      <option value="webp">End as WEBP</option>
+    </select>
+    <button id="run">Run the bench</button>
+  </div>
 </div>
 
 <section class="rail">
@@ -271,6 +279,10 @@ $in.addEventListener('paste', e => {
   fileInput = null; $('srcname').textContent = 'pasted text'; setMode(false);
 });
 $in.addEventListener('input', () => readout('ready', $in.value.length, $out.value.length));
+
+// Drag-and-drop doesn't exist on touch devices, so this button is the mobile fallback for it.
+$('pickfile').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', e => e.target.files[0] && loadFile(e.target.files[0]));
 
 const $drop = $('drop');
 ['dragenter','dragover'].forEach(ev => $drop.addEventListener(ev, e => { e.preventDefault(); $drop.classList.add('over'); }));
