@@ -294,7 +294,6 @@ export async function runTextPipeline(opts) {
       const secs = Math.round((Date.now() - t0) / 1000);
       found.push({ count:2, label:'Translated english → ' + t.langs[0] + ' → english (' + secs + 's)', act:'rewritten' });
       if (t.failed) found.push({ count:t.failed, label:'Paragraphs the translator skipped, left in english', act:'passed through' });
-      if (t.usage) found.push({ count:t.usage.neurons, label:'Workers AI cost this pass (' + t.usage.model + ', free plan gives 10,000/day)', act:'spent' });
       onStatus('Translated through ' + t.langs[0] + '.');
     } catch (err) {
       found.push({ count:0, label:'Translation failed: ' + err.message, act:'not run' });

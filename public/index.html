@@ -241,6 +241,12 @@
   <div id="trdiff-body" class="diffbody"></div>
 </section>
 
+<section class="ledger" id="usage" hidden>
+  <h2>Workers AI credit usage</h2>
+  <div id="usage-body"></div>
+  <p id="usage-note" class="empty"></p>
+</section>
+
 <div class="loading-overlay" id="loading" hidden role="status" aria-live="polite" aria-busy="true">
   <div class="loading-card">
     <div class="spinner"></div>
@@ -432,6 +438,23 @@ function trackDailyNeurons(spent) {
   return total;
 }
 
+// A separate panel, not another row in the findings ledger, since this is about the free plan's
+// budget rather than what the pass changed in the text.
+function renderUsage(usage) {
+  const section = $('usage');
+  if (!usage) { section.hidden = true; return; }
+  const today = trackDailyNeurons(usage.neurons);
+  const pct = Math.round(100 * today / FREE_NEURONS_PER_DAY);
+  $('usage-body').innerHTML = '<table><tbody>' +
+    '<tr><td>' + usage.neurons.toLocaleString() + '</td><td>' + escapeCell(usage.model) + '</td><td>this pass</td></tr>' +
+    '<tr><td>' + today.toLocaleString() + '</td><td>of ' + FREE_NEURONS_PER_DAY.toLocaleString() + ' free Neurons/day (' + pct + '%)</td>' +
+    '<td>' + (today > FREE_NEURONS_PER_DAY ? 'over free quota' : 'today so far') + '</td></tr>' +
+    '</tbody></table>';
+  $('usage-note').textContent = 'Neurons are Cloudflare’s unit for Workers AI cost, computed here from the tokens the model ' +
+    'reports back and its published per-model rate. The daily total is tracked in this browser only and resets at 00:00 UTC.';
+  section.hidden = false;
+}
+
 function setMode(isImg) {
   $('dest').hidden = isImg;
   $('imgdest').hidden = !isImg;
@@ -611,6 +634,7 @@ $('run').onclick = async () => {
   showLoading('Running the bench…');
   artifacts = [];
   renderTranslationDiff(null);
+  renderUsage(null);
 
   try {
     if (fileInput && fileInput.kind === 'image') { await runImage(); return; }
@@ -640,16 +664,9 @@ $('run').onclick = async () => {
 
     $out.value = result.text;
     $('outfmt').textContent = (FORMATS[dest].name2 || FORMATS[dest].name) + ' · textlab-5.' + FORMATS[dest].ext;
-    if (result.usage) {
-      const today = trackDailyNeurons(result.usage.neurons);
-      result.found.push({
-        count: today,
-        label: 'Neurons spent today so far (free plan resets ' + FREE_NEURONS_PER_DAY.toLocaleString() + ' at 00:00 UTC)',
-        act: today > FREE_NEURONS_PER_DAY ? 'over the free daily amount' : 'running total',
-      });
-    }
     renderFindings(result.found);
     renderTranslationDiff(result.translationDiff);
+    renderUsage(result.usage);
     readout('done', raw.length, result.text.length);
     if (!$status.classList.contains('err')) {
       setStatus(result.translated ? 'Done, with translation. Five files ready below.' : 'Done. Five files ready below.');

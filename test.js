@@ -115,8 +115,8 @@ Furthermore, technology has played a pivotal role in education — breaking down
     },
   });
   assert.deepStrictEqual(withUsage.usage, { neurons:42, model:'test-model' });
-  assert.ok(withUsage.found.some(f => f.count === 42 && /Workers AI cost this pass \(test-model/.test(f.label)),
-    'the ledger must report the neuron cost of the pass');
+  assert.ok(!withUsage.found.some(f => /Workers AI cost|neurons/i.test(f.label)),
+    'usage must not leak into the general findings ledger, it has its own panel');
   assert.strictEqual(broke.usage, null, 'a failed round-trip must not report usage');
 
   // --- provenance inspector ----------------------------------------------
