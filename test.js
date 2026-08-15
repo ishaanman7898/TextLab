@@ -18,7 +18,7 @@ In today's fast-paced world, technology has become an integral part of our daily
 Furthermore, technology has played a pivotal role in education — breaking down geographical barriers.`;
 
 (async () => {
-  const { clean, paras, FORMATS, runTextPipeline, INTERMEDIATES } = await import('./public/pipeline.js');
+  const { clean, paras, FORMATS, runTextPipeline, INTERMEDIATES, diffWords } = await import('./public/pipeline.js');
   const { inspect, sniff } = await import('./public/inspect.js');
 
   // a single Enter between paragraphs must split them, even one-liners and headings
@@ -81,6 +81,30 @@ Furthermore, technology has played a pivotal role in education — breaking down
     },
   });
   assert.ok(single.found.some(f => /Translated english → \w+ → english/.test(f.label)), 'the ledger must show a single-hop route');
+
+  // --- translation diff -----------------------------------------------------
+  const same = diffWords('the quick brown fox', 'the quick brown fox');
+  assert.deepStrictEqual(same.ops, [{ type:'equal', word:'the quick brown fox' }]);
+  assert.strictEqual(same.keptWords, 4);
+  assert.strictEqual(same.totalWords, 4);
+
+  const swapped = diffWords('the quick brown fox jumps', 'the slow brown fox leaps');
+  assert.strictEqual(swapped.ops.filter(o => o.type === 'del').map(o => o.word).join(' '), 'quick jumps');
+  assert.strictEqual(swapped.ops.filter(o => o.type === 'ins').map(o => o.word).join(' '), 'slow leaps');
+  assert.strictEqual(swapped.keptWords, 3, 'the, brown and fox survive unchanged');
+
+  const trWithDiff = await runTextPipeline({
+    raw:ESSAY, dest:'txt', translate:true,
+    fetchImpl: async (url, init) => {
+      const sent = JSON.parse(init.body);
+      return { ok:true, status:200, json: async () => ({ text:sent.text.toUpperCase(), failed:0 }) };
+    },
+  });
+  assert.ok(trWithDiff.translationDiff, 'a successful round-trip must report a translationDiff');
+  assert.strictEqual(trWithDiff.translationDiff.before, expected);
+  assert.strictEqual(trWithDiff.translationDiff.after, expected.toUpperCase());
+  assert.ok(trWithDiff.translationDiff.lang, 'translationDiff must name the language used');
+  assert.strictEqual(broke.translationDiff, null, 'a failed round-trip must not report a translationDiff');
 
   // --- provenance inspector ----------------------------------------------
   const seg = (marker, payload) => {

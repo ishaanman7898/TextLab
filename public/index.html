@@ -141,6 +141,12 @@
   .empty { font:400 14px/1.5 var(--sans); color:var(--dim); }
   #findings { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 
+  /* ---- translation diff ---- */
+  #trdiff-note { font:400 13px/1.5 var(--sans); color:var(--dim); margin:0 0 14px; }
+  .diffbody { font:400 13.5px/1.75 var(--mono); white-space:pre-wrap; word-wrap:break-word; }
+  .diffbody del { color:var(--signal); text-decoration:line-through; text-decoration-thickness:1px; background:rgba(217,65,15,.08); }
+  .diffbody ins { color:var(--blue); text-decoration:none; background:rgba(36,56,214,.08); }
+
   footer {
     margin-top:34px; padding:18px 0 0; border-top:2px solid var(--ink);
     font:400 13px/1.6 var(--sans); color:var(--dim);
@@ -229,6 +235,12 @@
   <div id="findings"><p class="empty">Run the bench to see what changed here.</p></div>
 </section>
 
+<section class="ledger" id="trdiff" hidden>
+  <h2>What the round trip changed</h2>
+  <p id="trdiff-note"></p>
+  <div id="trdiff-body" class="diffbody"></div>
+</section>
+
 <div class="loading-overlay" id="loading" hidden role="status" aria-live="polite" aria-busy="true">
   <div class="loading-card">
     <div class="spinner"></div>
@@ -247,7 +259,7 @@
 
 <script type="module">
 import { inspect, sniff, isImage } from './inspect.js';
-import { clean, scanHtml, stripTags, FORMATS, pick, runTextPipeline } from './pipeline.js';
+import { clean, scanHtml, stripTags, FORMATS, pick, runTextPipeline, diffWords } from './pipeline.js';
 
 /* ------------------------------------------------------------------ readers */
 
@@ -461,6 +473,21 @@ function renderFindings(found) {
 }
 const escapeCell = t => String(t).replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
 
+// Word-level before/after so you can eyeball whether the round trip kept the meaning, not just readable prose.
+function renderTranslationDiff(diff) {
+  const section = $('trdiff');
+  if (!diff) { section.hidden = true; return; }
+  const { ops, keptWords, totalWords } = diffWords(diff.before, diff.after);
+  const pct = totalWords ? Math.round(100 * keptWords / totalWords) : 100;
+  $('trdiff-note').textContent = 'Roughly ' + pct + '% of words came back exactly as they went in through ' + diff.lang +
+    '; the rest were reworded, reordered or dropped by the round trip. Read it over before you trust it.';
+  $('trdiff-body').innerHTML = ops.map(o =>
+    o.type === 'equal' ? escapeCell(o.word) + ' ' :
+    o.type === 'del' ? '<del>' + escapeCell(o.word) + '</del> ' :
+    '<ins>' + escapeCell(o.word) + '</ins> ').join('');
+  section.hidden = false;
+}
+
 function renderStages(chain) {
   $('stages').innerHTML = chain.map((s, i) =>
     '<div class="stage" data-i="' + i + '"><div class="dot"></div><div class="n">STEP ' + (i + 1) + '</div>' +
@@ -570,6 +597,7 @@ $('run').onclick = async () => {
   setBusy(true);
   showLoading('Running the bench…');
   artifacts = [];
+  renderTranslationDiff(null);
 
   try {
     if (fileInput && fileInput.kind === 'image') { await runImage(); return; }
@@ -600,6 +628,7 @@ $('run').onclick = async () => {
     $out.value = result.text;
     $('outfmt').textContent = (FORMATS[dest].name2 || FORMATS[dest].name) + ' · textlab-5.' + FORMATS[dest].ext;
     renderFindings(result.found);
+    renderTranslationDiff(result.translationDiff);
     readout('done', raw.length, result.text.length);
     if (!$status.classList.contains('err')) {
       setStatus(result.translated ? 'Done, with translation. Five files ready below.' : 'Done. Five files ready below.');

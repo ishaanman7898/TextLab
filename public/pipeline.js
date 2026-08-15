@@ -198,6 +198,44 @@ export const pick = (arr, n) => [...arr].sort(() => Math.random() - 0.5).slice(0
 export const LANGS = ['spanish','russian','french','german','japanese','portuguese','italian',
                       'korean','turkish','dutch','polish','swedish','indonesian','vietnamese'];
 
+/* ------------------------------------------------------------------ diff */
+
+// Word-level LCS diff, so a round-tripped translation can be checked against its source.
+// MAX_CHARS on the translate route bounds word counts to a few thousand, so the O(n*m) table stays small.
+export function diffWords(before, after) {
+  const a = before.split(/\s+/).filter(Boolean);
+  const b = after.split(/\s+/).filter(Boolean);
+  const n = a.length, m = b.length, w = m + 1;
+  const L = new Uint16Array((n + 1) * w);
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      L[i * w + j] = a[i - 1] === b[j - 1]
+        ? L[(i - 1) * w + (j - 1)] + 1
+        : Math.max(L[(i - 1) * w + j], L[i * w + (j - 1)]);
+    }
+  }
+  const ops = [];
+  let i = n, j = m;
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) { ops.push({ type:'equal', word:a[i - 1] }); i--; j--; }
+    else if (L[(i - 1) * w + j] >= L[i * w + (j - 1)]) { ops.push({ type:'del', word:a[i - 1] }); i--; }
+    else { ops.push({ type:'ins', word:b[j - 1] }); j--; }
+  }
+  while (i > 0) { ops.push({ type:'del', word:a[i - 1] }); i--; }
+  while (j > 0) { ops.push({ type:'ins', word:b[j - 1] }); j--; }
+  ops.reverse();
+
+  // Merge adjacent same-type runs so the rendered diff reads in phrases, not single words.
+  const merged = [];
+  for (const op of ops) {
+    const last = merged[merged.length - 1];
+    if (last && last.type === op.type) last.word += ' ' + op.word;
+    else merged.push({ type:op.type, word:op.word });
+  }
+  const kept = ops.filter(o => o.type === 'equal').length;
+  return { ops:merged, keptWords:kept, totalWords:n };
+}
+
 /* ------------------------------------------------------------------ the run */
 
 export async function roundTrip(text, opts = {}) {
@@ -239,15 +277,18 @@ export async function runTextPipeline(opts) {
   let text = swept.text;
   const found = [...extraFindings, ...swept.found];
   let translated = false;
+  let translationDiff = null;
 
   if (translate) {
     const t0 = Date.now();
     onStatus('Translating there and back, usually 15 to 40 seconds…');
     try {
+      const before = text;
       const t = await roundTrip(text, opts);
       // the translator sometimes welds sentences together; two lowercase letters before the stop keeps "U.S.A." safe
       text = clean(t.text.replace(/([a-z]{2}[.!?])([A-Z])/g, '$1 $2')).text;
       translated = true;
+      translationDiff = { before, after:text, lang:t.langs[0] };
       const secs = Math.round((Date.now() - t0) / 1000);
       found.push({ count:2, label:'Translated english → ' + t.langs[0] + ' → english (' + secs + 's)', act:'rewritten' });
       if (t.failed) found.push({ count:t.failed, label:'Paragraphs the translator skipped, left in english', act:'passed through' });
@@ -270,5 +311,5 @@ export async function runTextPipeline(opts) {
     if (i < chain.length - 1) text = f.from(body);
   }
 
-  return { text:FORMATS[dest].from(artifacts[4].body), found, artifacts, chain, translated };
+  return { text:FORMATS[dest].from(artifacts[4].body), found, artifacts, chain, translated, translationDiff };
 }
