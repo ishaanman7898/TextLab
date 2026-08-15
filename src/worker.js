@@ -1,6 +1,5 @@
 // Static assets are served by the ASSETS binding; this handles the API routes.
 const MODEL = '@cf/meta/m2m100-1.2b';
-const CHECK_MODEL = '@cf/meta/llama-3.2-3b-instruct';
 const LANGS = ['spanish','russian','french','german','japanese','portuguese','italian',
                'korean','turkish','dutch','polish','swedish','indonesian','vietnamese'];
 const MAX_CHARS = 12000, CHUNK = 1200, MAX_CHUNKS = 16, LANES = 3;
@@ -28,33 +27,6 @@ async function hop(env, text, source_lang, target_lang) {
   }
 }
 
-// A second, smaller model reads the before/after and flags translations that drifted off meaning.
-// Best-effort: if this model is unavailable or errors, the translation itself still stands.
-async function checkMeaning(env, original, translated) {
-  try {
-    const r = await env.AI.run(CHECK_MODEL, {
-      messages: [
-        { role: 'system', content: 'You are a strict proofreader comparing an original passage with a translated-and-back ' +
-          'version of it. Reply with exactly one line: "MATCH" only if the translated version reads as fluent, ' +
-          'grammatical English and preserves the same facts, numbers, and logical relationships, including words ' +
-          'like "not", "more than", "before" and "after" that reverse or qualify a claim. Reply "DRIFT: " followed ' +
-          'by a reason under 20 words if the meaning changed or reversed, if numbers/names/facts changed, if ' +
-          'connecting words were dropped so a sentence no longer makes sense, or if the text reads as broken or ' +
-          'garbled English. Minor rewording of an otherwise correct, coherent sentence is fine.' },
-        // both inputs are already capped at MAX_CHARS by the route above, so the 3B model sees the whole passage, not just the opening
-        { role: 'user', content: 'ORIGINAL:\n' + original + '\n\nTRANSLATED:\n' + translated },
-      ],
-    });
-    const out = (r && r.response || '').trim();
-    if (!out) return null;
-    const drift = /^drift/i.test(out);
-    const note = out.replace(/^(match|drift)\s*:?\s*/i, '').trim();
-    return { ok: !drift, note: note.slice(0, 160) };   // empty note means the model gave a bare verdict with no extra reasoning
-  } catch {
-    return null;
-  }
-}
-
 // Workers AI throttles hard when everything is fired at once, so keep a few lanes open at most.
 async function inLanes(items, fn) {
   const out = new Array(items.length);
@@ -71,7 +43,7 @@ export default {
 
     // Lets the page tell "the API is missing" apart from "the model misbehaved".
     if (pathname === '/api/health') {
-      return json({ ok: true, ai: typeof (env.AI && env.AI.run) === 'function', model: MODEL, checkModel: CHECK_MODEL, langs: LANGS.length });
+      return json({ ok: true, ai: typeof (env.AI && env.AI.run) === 'function', model: MODEL, langs: LANGS.length });
     }
 
     if (pathname !== '/api/translate') return json({ error: 'no such route: ' + pathname }, 404);
@@ -80,10 +52,10 @@ export default {
     let body;
     try { body = await request.json(); } catch { return json({ error: 'invalid JSON' }, 400); }
     const text = typeof body.text === 'string' ? body.text : '';
-    const hops = (Array.isArray(body.langs) ? body.langs : []).filter(l => LANGS.includes(l)).slice(0, 2);
+    const hops = (Array.isArray(body.langs) ? body.langs : []).filter(l => LANGS.includes(l)).slice(0, 1);
 
     if (!text.trim()) return json({ error: 'no text' }, 400);
-    if (hops.length !== 2) return json({ error: 'need two supported languages' }, 400);
+    if (hops.length !== 1) return json({ error: 'need one supported language' }, 400);
     if (text.length > MAX_CHARS) return json({ error: `text is ${text.length} characters, the round-trip limit is ${MAX_CHARS}` }, 413);
     if (!env.AI || typeof env.AI.run !== 'function') return json({ error: 'this deployment has no Workers AI binding' }, 503);
 
@@ -99,10 +71,9 @@ export default {
     }
 
     // Every hop failing means nothing was translated, and the caller should hear about it.
-    if (failed >= parts.length * 3) return json({ error: 'the translation model returned nothing' + (lastErr ? ': ' + lastErr : '') }, 502);
+    if (failed >= parts.length * (route.length - 1)) return json({ error: 'the translation model returned nothing' + (lastErr ? ': ' + lastErr : '') }, 502);
 
     const final = cur.join('\n\n');
-    const check = await checkMeaning(env, text, final);
-    return json({ text: final, route, chunks: parts.length, failed, check });
+    return json({ text: final, route, chunks: parts.length, failed });
   },
 };

@@ -201,7 +201,7 @@ export const LANGS = ['spanish','russian','french','german','japanese','portugue
 /* ------------------------------------------------------------------ the run */
 
 export async function roundTrip(text, opts = {}) {
-  const langs = opts.langs || pick(LANGS, 2);
+  const langs = opts.langs || pick(LANGS, 1);
   const f = opts.fetchImpl || globalThis.fetch;
   const res = await f((opts.apiBase || '') + '/api/translate', {
     method:'POST', headers:{ 'content-type':'application/json' },
@@ -211,7 +211,7 @@ export async function roundTrip(text, opts = {}) {
   try { data = await res.json(); } catch { throw new Error('the server sent back something that is not JSON (' + res.status + ')'); }
   if (!res.ok) throw new Error(data.error || ('translation failed with status ' + res.status));
   if (!data.text || !data.text.trim()) throw new Error('the translator sent back nothing');
-  return { text:data.text, langs, failed:data.failed || 0, check:data.check || null };
+  return { text:data.text, langs, failed:data.failed || 0 };
 }
 
 /**
@@ -249,10 +249,9 @@ export async function runTextPipeline(opts) {
       text = clean(t.text.replace(/([a-z]{2}[.!?])([A-Z])/g, '$1 $2')).text;
       translated = true;
       const secs = Math.round((Date.now() - t0) / 1000);
-      found.push({ count:3, label:'Translated english → ' + t.langs[0] + ' → ' + t.langs[1] + ' → english (' + secs + 's)', act:'rewritten' });
+      found.push({ count:2, label:'Translated english → ' + t.langs[0] + ' → english (' + secs + 's)', act:'rewritten' });
       if (t.failed) found.push({ count:t.failed, label:'Paragraphs the translator skipped, left in english', act:'passed through' });
-      if (t.check) found.push({ count:1, label:'Meaning check: ' + (t.check.ok ? t.check.note || 'reads consistent with the source' : 'flagged, ' + (t.check.note || 'no reason given')), act:t.check.ok ? 'verified' : 'flagged' });
-      onStatus('Translated through ' + t.langs.join(' and ') + '.');
+      onStatus('Translated through ' + t.langs[0] + '.');
     } catch (err) {
       found.push({ count:0, label:'Translation failed: ' + err.message, act:'not run' });
       onStatus('Translation failed: ' + err.message, true);

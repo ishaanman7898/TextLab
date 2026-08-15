@@ -83,6 +83,33 @@
   @keyframes status-pulse { 0%,100% { opacity:.25; transform:scale(.75); } 50% { opacity:1; transform:scale(1); } }
   @media (prefers-reduced-motion:reduce) { .status.busy::before { animation:none; opacity:.7; } }
 
+  /* ---- loading overlay ---- */
+  .loading-overlay {
+    position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+    background:rgba(22,24,28,.5); padding:20px;
+  }
+  .loading-overlay[hidden] { display:none; }
+  .loading-card {
+    background:var(--sheet); border:1px solid var(--ink); border-radius:2px;
+    padding:28px 30px; width:100%; max-width:340px; text-align:center;
+    box-shadow:0 12px 34px rgba(0,0,0,.28);
+  }
+  .spinner {
+    width:32px; height:32px; margin:0 auto 16px; border-radius:50%;
+    border:3px solid var(--rule); border-top-color:var(--blue); animation:spin .75s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .loading-title { font:600 14px/1.3 var(--sans); color:var(--ink); margin:0 0 6px; }
+  .loading-detail { font:400 12.5px/1.5 var(--mono); color:var(--dim); min-height:1.6em; }
+  .loading-bar { position:relative; height:4px; margin-top:16px; background:var(--rule); border-radius:2px; overflow:hidden; }
+  .loading-bar i { display:block; height:100%; width:0%; background:var(--blue); border-radius:2px; transition:width .3s ease; }
+  .loading-bar.indeterminate i { position:absolute; top:0; width:35%; animation:loading-sweep 1.1s ease-in-out infinite; }
+  @keyframes loading-sweep { 0% { left:-35%; } 100% { left:100%; } }
+  @media (prefers-reduced-motion:reduce) {
+    .spinner { animation:none; border-top-color:var(--blue); }
+    .loading-bar.indeterminate i { animation:none; position:static; width:60%; }
+  }
+
   /* ---- signature: the pipeline rail ---- */
   .rail { margin-top:34px; padding-top:22px; border-top:2px solid var(--ink); }
   .rail h2 { font:600 15px/1.3 var(--sans); color:var(--dim); margin:0 0 16px; }
@@ -202,8 +229,17 @@
   <div id="findings"><p class="empty">Run the bench to see what changed here.</p></div>
 </section>
 
+<div class="loading-overlay" id="loading" hidden role="status" aria-live="polite" aria-busy="true">
+  <div class="loading-card">
+    <div class="spinner"></div>
+    <p class="loading-title" id="loadingTitle">Working…</p>
+    <p class="loading-detail" id="loadingDetail"></p>
+    <div class="loading-bar" id="loadingBar"><i></i></div>
+  </div>
+</div>
+
 <footer>
-  <p>Every step runs in your browser except the translation pass: <span id="modelname">a Cloudflare Workers AI model</span> sends the text there and back, then a second model checks the result still makes sense. Source: <a href="https://github.com/ishaanman7898/TextLab">github.com/ishaanman7898/TextLab</a></p>
+  <p>Every step runs in your browser except the translation pass: <span id="modelname">a Cloudflare Workers AI model</span> sends the text there and back. Source: <a href="https://github.com/ishaanman7898/TextLab">github.com/ishaanman7898/TextLab</a></p>
   <p class="version">TextLab v1.0.0</p>
 </footer>
 
@@ -330,8 +366,43 @@ const $ = id => document.getElementById(id);
 const $in = $('in'), $out = $('out'), $status = $('status');
 let pasteFindings = [], fileInput = null, artifacts = [];
 
-function setStatus(msg, isErr) { $status.textContent = msg; $status.classList.toggle('err', !!isErr); }
+function setStatus(msg, isErr) {
+  $status.textContent = msg;
+  $status.classList.toggle('err', !!isErr);
+  if (!$('loading').hidden) {
+    $('loadingDetail').textContent = msg;
+    $('loadingDetail').style.color = isErr ? 'var(--signal)' : '';
+    updateLoadingProgress(msg);
+  }
+}
 function setBusy(on) { $status.classList.toggle('busy', !!on); }
+
+function showLoading(title) {
+  $('loadingTitle').textContent = title;
+  $('loadingDetail').textContent = '';
+  $('loadingDetail').style.color = '';
+  const bar = $('loadingBar');
+  bar.classList.remove('indeterminate');
+  bar.querySelector('i').style.width = '0%';
+  $('loading').hidden = false;
+}
+function hideLoading() { $('loading').hidden = true; }
+
+// Nudges the bar along using whatever the status text already tells us: a "Step N of M"
+// message gives an exact fraction, a translation-in-progress message gets a sweeping bar.
+function updateLoadingProgress(msg) {
+  const bar = $('loadingBar'), fill = bar.querySelector('i');
+  const step = /Step (\d+) of (\d+)/.exec(msg);
+  if (step) {
+    bar.classList.remove('indeterminate');
+    fill.style.width = (Number(step[1]) / Number(step[2]) * 100) + '%';
+  } else if (/Translat/i.test(msg)) {
+    bar.classList.add('indeterminate');
+  } else {
+    bar.classList.remove('indeterminate');
+    fill.style.width = '8%';
+  }
+}
 function readout(state, a, b, unit) {
   $('readout').innerHTML = state + '<br><b>' + a.toLocaleString() + '</b> ' + (unit || 'chars') + ' in / <b>' + b.toLocaleString() + '</b> out';
 }
@@ -360,6 +431,7 @@ $drop.addEventListener('drop', e => e.dataTransfer.files[0] && loadFile(e.dataTr
 
 async function loadFile(file) {
   setBusy(true);
+  showLoading('Reading file…');
   setStatus('Reading ' + file.name + '…');
   try {
     fileInput = await readFile(file);
@@ -377,6 +449,7 @@ async function loadFile(file) {
     setStatus('Could not read that file: ' + err.message, true);
   } finally {
     setBusy(false);
+    hideLoading();
   }
 }
 
@@ -487,13 +560,19 @@ let ticker = null;
 
 $('run').onclick = async () => {
   const raw = $in.value;
+  if (!(fileInput && fileInput.kind === 'image') && !raw.trim()) {
+    setStatus('Nothing to run yet, add some text first.', true);
+    $in.focus();
+    return;
+  }
+
   $('run').disabled = true;
   setBusy(true);
+  showLoading('Running the bench…');
   artifacts = [];
 
   try {
     if (fileInput && fileInput.kind === 'image') { await runImage(); return; }
-    if (!raw.trim()) { setStatus('Nothing to run yet, add some text first.', true); $in.focus(); return; }
 
     const dest = $('dest').value;
     const translate = $('tr').hidden ? false : $('tr').getAttribute('aria-pressed') === 'true';
@@ -531,6 +610,7 @@ $('run').onclick = async () => {
     clearInterval(ticker);
     $('run').disabled = false;
     setBusy(false);
+    hideLoading();
   }
 };
 
@@ -540,7 +620,7 @@ readout('idle', 0, 0);
 fetch('/api/health')
   .then(r => r.json())
   .then(h => {
-    if (h.model) $('modelname').textContent = h.model + (h.checkModel ? ' (checked by ' + h.checkModel + ')' : '');
+    if (h.model) $('modelname').textContent = h.model;
     if (!h.ai) throw new Error('this deployment has no Workers AI binding');
   })
   .catch(err => {
