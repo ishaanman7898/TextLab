@@ -1,11 +1,18 @@
 // Static assets are served by the ASSETS binding; this handles the API routes.
-const MODEL = '@cf/meta/m2m100-1.2b';
+// An instruct LLM reads more fluently than a dedicated seq2seq translation model and, at fp8,
+// is billed cheaper per token too: https://developers.cloudflare.com/workers-ai/platform/pricing/
+const MODEL = '@cf/meta/llama-3.1-8b-instruct-fp8';
+const NEURONS_PER_M_INPUT = 13778, NEURONS_PER_M_OUTPUT = 26128;   // Cloudflare's published rate for MODEL
 const LANGS = ['spanish','russian','french','german','japanese','portuguese','italian',
                'korean','turkish','dutch','polish','swedish','indonesian','vietnamese'];
 const MAX_CHARS = 12000, CHUNK = 1200, MAX_CHUNKS = 16, LANES = 3;
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
+
+const sysPrompt = (source_lang, target_lang) =>
+  `Translate the user's message from ${source_lang} to ${target_lang}. ` +
+  'Reply with only the translation itself: no preamble, no notes, no quotation marks, nothing else.';
 
 // Split on blank lines, then hard-wrap anything still over the chunk size.
 function chunk(text) {
@@ -19,11 +26,21 @@ function chunk(text) {
 // A hop that fails passes its text through untranslated rather than sinking the whole request.
 async function hop(env, text, source_lang, target_lang) {
   try {
-    const r = await env.AI.run(MODEL, { text, source_lang, target_lang });
-    const out = (r && r.translated_text || '').trim();
-    return out ? { text: out, ok: true } : { text, ok: false };
+    const r = await env.AI.run(MODEL, {
+      messages: [
+        { role: 'system', content: sysPrompt(source_lang, target_lang) },
+        { role: 'user', content: text },
+      ],
+      max_tokens: 2048,
+      temperature: 0.2,
+    });
+    const out = (r && r.response || '').trim().replace(/^["'“‘]+|["'”’]+$/g, '');
+    const usage = (r && r.usage) || {};
+    const neurons = (usage.prompt_tokens || 0) / 1e6 * NEURONS_PER_M_INPUT +
+                    (usage.completion_tokens || 0) / 1e6 * NEURONS_PER_M_OUTPUT;
+    return out ? { text: out, ok: true, neurons } : { text, ok: false, neurons };
   } catch (err) {
-    return { text, ok: false, err: String(err && err.message || err).slice(0, 120) };
+    return { text, ok: false, neurons: 0, err: String(err && err.message || err).slice(0, 120) };
   }
 }
 
@@ -63,10 +80,10 @@ export default {
     if (parts.length > MAX_CHUNKS) return json({ error: `${parts.length} paragraphs is over the ${MAX_CHUNKS} the round-trip will take at once` }, 413);
 
     const route = ['english', ...hops, 'english'];
-    let cur = parts, failed = 0, lastErr = null;
+    let cur = parts, failed = 0, lastErr = null, neurons = 0;
     for (let i = 1; i < route.length; i++) {
       const done = await inLanes(cur, p => hop(env, p, route[i - 1], route[i]));
-      for (const d of done) if (!d.ok) { failed++; lastErr = d.err || lastErr; }
+      for (const d of done) { if (!d.ok) { failed++; lastErr = d.err || lastErr; } neurons += d.neurons || 0; }
       cur = done.map(d => d.text);
     }
 
@@ -74,6 +91,6 @@ export default {
     if (failed >= parts.length * (route.length - 1)) return json({ error: 'the translation model returned nothing' + (lastErr ? ': ' + lastErr : '') }, 502);
 
     const final = cur.join('\n\n');
-    return json({ text: final, route, chunks: parts.length, failed });
+    return json({ text: final, route, chunks: parts.length, failed, usage: { neurons: Math.round(neurons), model: MODEL } });
   },
 };

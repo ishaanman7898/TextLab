@@ -419,6 +419,19 @@ function readout(state, a, b, unit) {
   $('readout').innerHTML = state + '<br><b>' + a.toLocaleString() + '</b> ' + (unit || 'chars') + ' in / <b>' + b.toLocaleString() + '</b> out';
 }
 
+// Neurons reset at 00:00 UTC, so key by the UTC date and drop any other day's leftover key.
+const FREE_NEURONS_PER_DAY = 10000;
+function trackDailyNeurons(spent) {
+  const key = 'textlab-neurons-' + new Date().toISOString().slice(0, 10);
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith('textlab-neurons-') && k !== key) localStorage.removeItem(k);
+  }
+  const total = (Number(localStorage.getItem(key)) || 0) + spent;
+  localStorage.setItem(key, String(total));
+  return total;
+}
+
 function setMode(isImg) {
   $('dest').hidden = isImg;
   $('imgdest').hidden = !isImg;
@@ -627,6 +640,14 @@ $('run').onclick = async () => {
 
     $out.value = result.text;
     $('outfmt').textContent = (FORMATS[dest].name2 || FORMATS[dest].name) + ' · textlab-5.' + FORMATS[dest].ext;
+    if (result.usage) {
+      const today = trackDailyNeurons(result.usage.neurons);
+      result.found.push({
+        count: today,
+        label: 'Neurons spent today so far (free plan resets ' + FREE_NEURONS_PER_DAY.toLocaleString() + ' at 00:00 UTC)',
+        act: today > FREE_NEURONS_PER_DAY ? 'over the free daily amount' : 'running total',
+      });
+    }
     renderFindings(result.found);
     renderTranslationDiff(result.translationDiff);
     readout('done', raw.length, result.text.length);

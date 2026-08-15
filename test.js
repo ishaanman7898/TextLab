@@ -106,6 +106,19 @@ Furthermore, technology has played a pivotal role in education — breaking down
   assert.ok(trWithDiff.translationDiff.lang, 'translationDiff must name the language used');
   assert.strictEqual(broke.translationDiff, null, 'a failed round-trip must not report a translationDiff');
 
+  // --- neuron usage reporting -----------------------------------------------
+  const withUsage = await runTextPipeline({
+    raw:ESSAY, dest:'txt', translate:true,
+    fetchImpl: async (url, init) => {
+      const sent = JSON.parse(init.body);
+      return { ok:true, status:200, json: async () => ({ text:sent.text, failed:0, usage:{ neurons:42, model:'test-model' } }) };
+    },
+  });
+  assert.deepStrictEqual(withUsage.usage, { neurons:42, model:'test-model' });
+  assert.ok(withUsage.found.some(f => f.count === 42 && /Workers AI cost this pass \(test-model/.test(f.label)),
+    'the ledger must report the neuron cost of the pass');
+  assert.strictEqual(broke.usage, null, 'a failed round-trip must not report usage');
+
   // --- provenance inspector ----------------------------------------------
   const seg = (marker, payload) => {
     const b = Buffer.from(payload, 'binary'), len = Buffer.alloc(2);

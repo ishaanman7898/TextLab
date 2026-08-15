@@ -249,7 +249,7 @@ export async function roundTrip(text, opts = {}) {
   try { data = await res.json(); } catch { throw new Error('the server sent back something that is not JSON (' + res.status + ')'); }
   if (!res.ok) throw new Error(data.error || ('translation failed with status ' + res.status));
   if (!data.text || !data.text.trim()) throw new Error('the translator sent back nothing');
-  return { text:data.text, langs, failed:data.failed || 0 };
+  return { text:data.text, langs, failed:data.failed || 0, usage:data.usage || null };
 }
 
 /**
@@ -278,6 +278,7 @@ export async function runTextPipeline(opts) {
   const found = [...extraFindings, ...swept.found];
   let translated = false;
   let translationDiff = null;
+  let usage = null;
 
   if (translate) {
     const t0 = Date.now();
@@ -289,9 +290,11 @@ export async function runTextPipeline(opts) {
       text = clean(t.text.replace(/([a-z]{2}[.!?])([A-Z])/g, '$1 $2')).text;
       translated = true;
       translationDiff = { before, after:text, lang:t.langs[0] };
+      usage = t.usage;
       const secs = Math.round((Date.now() - t0) / 1000);
       found.push({ count:2, label:'Translated english → ' + t.langs[0] + ' → english (' + secs + 's)', act:'rewritten' });
       if (t.failed) found.push({ count:t.failed, label:'Paragraphs the translator skipped, left in english', act:'passed through' });
+      if (t.usage) found.push({ count:t.usage.neurons, label:'Workers AI cost this pass (' + t.usage.model + ', free plan gives 10,000/day)', act:'spent' });
       onStatus('Translated through ' + t.langs[0] + '.');
     } catch (err) {
       found.push({ count:0, label:'Translation failed: ' + err.message, act:'not run' });
@@ -311,5 +314,5 @@ export async function runTextPipeline(opts) {
     if (i < chain.length - 1) text = f.from(body);
   }
 
-  return { text:FORMATS[dest].from(artifacts[4].body), found, artifacts, chain, translated, translationDiff };
+  return { text:FORMATS[dest].from(artifacts[4].body), found, artifacts, chain, translated, translationDiff, usage };
 }
